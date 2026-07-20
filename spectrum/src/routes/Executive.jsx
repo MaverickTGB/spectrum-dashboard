@@ -3,6 +3,8 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   BarChart, Bar, Cell, Legend,
 } from "recharts";
+import { signOut } from "../lib/api.js";
+import { useAuth } from "../lib/auth.jsx";
 
 /* ————————————————————— Spectrum design tokens ————————————————————— */
 const T = {
@@ -443,6 +445,7 @@ function FinancialsTab() {
 export default function SpectrumExecutiveDashboard() {
   const [tab, setTab] = useState("Overview");
   const [selectedName, setSelectedName] = useState("Southpointe");
+  const { profile } = useAuth();
   const tabs = ["Overview", "Facilities", "Team", "Financials"];
   const goToFacility = (name) => { setSelectedName(name); setTab("Facilities"); };
 
@@ -473,6 +476,16 @@ export default function SpectrumExecutiveDashboard() {
                 color: tab === t ? "#FFF" : T.inkSoft, fontWeight: 600,
               }}>{t}</button>
             ))}
+            <div style={{ width: 1, height: 22, background: T.hairline, margin: "0 4px" }} />
+            {profile?.email && (
+              <span className="ed-num" style={{ fontSize: 11, color: T.inkSoft, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={profile.email}>
+                {profile.email}
+              </span>
+            )}
+            <button onClick={async () => { await signOut(); window.location.href = "/login"; }} className="ed-ui" style={{
+              fontSize: 13, padding: "9px 18px", cursor: "pointer", borderRadius: 99,
+              border: `1px solid ${T.hairline}`, background: "transparent", color: T.inkSoft, fontWeight: 600,
+            }}>Sign out</button>
           </nav>
         </div>
       </header>
