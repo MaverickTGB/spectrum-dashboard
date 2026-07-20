@@ -72,6 +72,7 @@ const PulseLine = ({ color = T.teal, width = 46 }) => (
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const monthLabel = (iso) => { const [y,m] = iso.split("-"); return `${MONTHS[+m-1]} ${y}`; };
+const ymKey = (iso) => iso.slice(0, 7);  // 2026-06-01 -> 2026-06
 const shortDay = (iso) => { const [ , m, d] = iso.split("-"); return `${MONTHS[+m-1].slice(0,3)} ${+d}`; };
 const n1 = (v) => (v == null ? "—" : Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 }));
 const n0 = (v) => (v == null ? "—" : Math.round(Number(v)).toLocaleString());
@@ -392,14 +393,15 @@ function TeamTab({ data, month }) {
 }
 
 /* ————————————————————— Data loading ————————————————————— */
-function lastDayOfMonth(iso) {
-  const [y, m] = iso.split("-").map(Number);
-  return `${iso}-${new Date(y, m, 0).getDate()}`;
+function lastDayOfMonth(ym) {
+  const [y, m] = ym.split("-").map(Number);
+  return `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
 }
 
 async function loadMonthData(monthIso) {
-  const start = `${monthIso}-01`;
-  const end = lastDayOfMonth(monthIso);
+  const ym = ymKey(monthIso);          // normalize 2026-06-01 -> 2026-06
+  const start = `${ym}-01`;
+  const end = lastDayOfMonth(ym);
   const [facs, fm, fg, rta, dc, lm] = await Promise.all([
     supabase.from("facilities").select("id, name, code"),
     supabase.from("facility_monthly").select("facility_id, avg_spectrum_census, avg_snf, avg_ltc").eq("month", start),
