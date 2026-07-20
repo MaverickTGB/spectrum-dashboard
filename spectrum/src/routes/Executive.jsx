@@ -110,6 +110,29 @@ const Empty = ({ children }) => (
   </div>
 );
 
+const starColor = (n) => (n == null ? T.hairline : n >= 4 ? T.teal : n >= 3 ? T.amber : T.alert);
+const Stars = ({ n, size = 16 }) => {
+  if (n == null) return <span style={{ color: T.inkSoft, fontSize: 12 }}>Not rated</span>;
+  return (
+    <span aria-label={`${n} of 5 stars`} style={{ color: starColor(n), fontSize: size, letterSpacing: 1 }}>
+      {"★".repeat(n)}<span style={{ color: T.hairline }}>{"★".repeat(5 - n)}</span>
+    </span>
+  );
+};
+const RatingRow = ({ label, n }) => (
+  <div className="flex items-center justify-between" style={{ padding: "7px 0", borderBottom: `1px solid ${T.hairline}` }}>
+    <span style={{ fontSize: 13, color: T.ink }}>{label}</span>
+    <Stars n={n} />
+  </div>
+);
+const Stat = ({ label, value, tone }) => (
+  <div>
+    <div style={{ fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: T.inkSoft, marginBottom: 4 }}>{label}</div>
+    <div className="ed-num" style={{ fontSize: 16, fontWeight: 600, color: tone || T.ink }}>{value}</div>
+  </div>
+);
+const fmtDate = (iso) => { if (!iso) return "—"; const d = new Date(iso); return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); };
+
 /* ————————————————————— Tab: Overview ————————————————————— */
 function OverviewTab({ data, month, goToFacility }) {
   const { facilities, portfolioTrend, kpis, mixData, hasGrowth, hasLiaison } = data;
@@ -253,7 +276,7 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
         <span className="ed-num" style={{ fontSize: 12, color: T.inkSoft }}>avg census {n1(sel.census)}</span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8" style={{ marginBottom: 32 }}>
         <div>
           <SectionLabel right={monthLabel(month)}>Daily Spectrum census</SectionLabel>
           <div className="ed-card p-4" style={{ height: 230 }}>
@@ -271,12 +294,12 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
           </div>
         </div>
         <div>
-          <SectionLabel right="Avg daily patients">Patient mix &amp; capture</SectionLabel>
+          <SectionLabel right="Avg daily patients">Census &amp; capture</SectionLabel>
           <div className="ed-card p-5">
             <div className="grid grid-cols-2 gap-4" style={{ marginBottom: 18 }}>
               {mix.map((m) => (
                 <div key={m.type}>
-                  <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.inkSoft, marginBottom: 6 }}>{m.type}</div>
+                  <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.inkSoft, marginBottom: 6 }}>{m.type} census</div>
                   <div className="ed-display" style={{ fontSize: 26, fontWeight: 800 }}>{n1(m.count)}</div>
                 </div>
               ))}
@@ -288,6 +311,59 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
             <div className="ed-num" style={{ fontSize: 12, color: T.inkSoft }}>
               {sel.building ? `${n1(sel.census)} of ${n1(sel.building)} building patients on service` : "No building census this month"}
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Return to acute + CMS scorecard */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div>
+          <SectionLabel right={monthLabel(month)}>Return to acute</SectionLabel>
+          <div className="ed-card p-5">
+            {sel.rta ? (
+              <>
+                <div className="grid grid-cols-2 gap-4" style={{ marginBottom: 16 }}>
+                  <Stat label="SNF RTA rate" value={sel.rta.snfRate == null ? "—" : sel.rta.snfRate.toFixed(1) + "%"} tone={sel.rta.snfRate > 20 ? T.alert : sel.rta.snfRate > 12 ? T.amber : T.teal} />
+                  <Stat label="LTC RTA rate" value={sel.rta.ltcRate == null ? "—" : sel.rta.ltcRate.toFixed(1) + "%"} tone={sel.rta.ltcRate > 20 ? T.alert : sel.rta.ltcRate > 12 ? T.amber : T.teal} />
+                  <Stat label="SNF admits / RTA" value={`${sel.rta.admits ?? "—"} / ${sel.rta.rtas ?? "—"}`} />
+                  <Stat label="LTC admits / RTA" value={`${sel.rta.ltc_admits ?? "—"} / ${sel.rta.ltc_rtas ?? "—"}`} />
+                  <Stat label="ER visits" value={sel.rta.er ?? "—"} />
+                </div>
+              </>
+            ) : <div style={{ color: T.inkSoft, fontSize: 13 }}>No return-to-acute data for {monthLabel(month)}.</div>}
+          </div>
+        </div>
+        <div>
+          <SectionLabel right={sel.cms ? `CMS refreshed ${fmtDate(sel.cms.refreshed_at)}` : "CMS"}>Quality &amp; CMS ratings</SectionLabel>
+          <div className="ed-card p-5">
+            {sel.cms ? (
+              <>
+                <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>Overall</span>
+                  <Stars n={sel.cms.overall_rating} size={20} />
+                </div>
+                <RatingRow label="Health inspection" n={sel.cms.health_inspection_rating} />
+                <RatingRow label="Staffing" n={sel.cms.staffing_rating} />
+                <RatingRow label="Quality measures" n={sel.cms.qm_rating} />
+                <RatingRow label="Long-stay QM" n={sel.cms.longstay_qm_rating} />
+                <RatingRow label="Short-stay QM" n={sel.cms.shortstay_qm_rating} />
+                <div className="grid grid-cols-2 gap-4" style={{ marginTop: 16 }}>
+                  <Stat label="Nurse hrs / resident / day" value={sel.cms.total_nurse_hprd != null ? Number(sel.cms.total_nurse_hprd).toFixed(2) : "—"} />
+                  <Stat label="RN hrs / resident / day" value={sel.cms.rn_hprd != null ? Number(sel.cms.rn_hprd).toFixed(2) : "—"} />
+                  <Stat label="Nursing turnover" value={sel.cms.nursing_turnover != null ? sel.cms.nursing_turnover + "%" : "—"} tone={sel.cms.nursing_turnover > 60 ? T.alert : T.ink} />
+                  <Stat label="RN turnover" value={sel.cms.rn_turnover != null ? sel.cms.rn_turnover + "%" : "—"} tone={sel.cms.rn_turnover > 60 ? T.alert : T.ink} />
+                  <Stat label="Certified beds" value={sel.cms.certified_beds ?? "—"} />
+                  <Stat label="Fines" value={sel.cms.num_fines ? `${sel.cms.num_fines} · $${Number(sel.cms.total_fine_dollars).toLocaleString()}` : "None"} tone={sel.cms.num_fines ? T.amber : T.ink} />
+                </div>
+                <p style={{ fontSize: 11, color: T.inkSoft, marginTop: 14, marginBottom: 0, lineHeight: 1.5 }}>
+                  From CMS Care Compare (CCN {sel.ccn}). Ratings reflect CMS's latest survey cycle, not the current month — treat separately from live census.
+                </p>
+              </>
+            ) : (
+              <div style={{ color: T.inkSoft, fontSize: 13, lineHeight: 1.6 }}>
+                {sel.ccn ? "CMS data not loaded yet for this facility." : "No CCN on file — this facility isn't in CMS's nursing-home ratings (likely a rehab hospital or LTAC)."}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -402,16 +478,20 @@ async function loadMonthData(monthIso) {
   const ym = ymKey(monthIso);          // normalize 2026-06-01 -> 2026-06
   const start = `${ym}-01`;
   const end = lastDayOfMonth(ym);
-  const [facs, fm, fg, rta, dc, lm] = await Promise.all([
-    supabase.from("facilities").select("id, name, code"),
+  const [facs, fm, fg, rta, dc, lm, cms] = await Promise.all([
+    supabase.from("facilities").select("id, name, code, ccn"),
     supabase.from("facility_monthly").select("facility_id, avg_spectrum_census, avg_snf, avg_ltc").eq("month", start),
     supabase.from("facility_growth").select("facility_id, avg_building_census, avg_non_spectrum").eq("month", start),
     supabase.from("rta_monthly").select("facility_id, admits, rtas, ltc_admits, ltc_rtas, er_visits").eq("month", start),
     supabase.from("daily_census").select("facility_id, census_date, spectrum_census").gte("census_date", start).lte("census_date", end),
     supabase.from("liaison_monthly").select("hours, ot_hours, notes_count, liaisons(name)").eq("month", start),
+    supabase.from("facility_cms").select("*"),
   ]);
-  const err = facs.error || fm.error || fg.error || rta.error || dc.error || lm.error;
+  const err = facs.error || fm.error || fg.error || rta.error || dc.error || lm.error || cms.error;
   if (err) throw err;
+
+  const cmsById = {}; (cms.data || []).forEach((c) => { cmsById[c.facility_id] = c; });
+  const rtaById = {}; (rta.data || []).forEach((r) => { rtaById[r.facility_id] = r; });
 
   const facById = {};
   (facs.data || []).forEach((f) => { facById[f.id] = f; });
@@ -441,6 +521,14 @@ async function loadMonthData(monthIso) {
   Object.values(byId).forEach((o) => {
     if (o.nonSpec == null && o.building != null && o.census != null) o.nonSpec = Math.max(o.building - o.census, 0);
     o.opp = o.building && o.building > 0 && o.nonSpec != null ? Math.round((o.nonSpec / o.building) * 100) : null;
+    o.ccn = facById[o.facility_id]?.ccn || null;
+    o.cms = cmsById[o.facility_id] || null;
+    const rr = rtaById[o.facility_id];
+    o.rta = rr ? {
+      admits: rr.admits, rtas: rr.rtas, ltc_admits: rr.ltc_admits, ltc_rtas: rr.ltc_rtas, er: rr.er_visits,
+      snfRate: rr.admits ? (rr.rtas / rr.admits) * 100 : null,
+      ltcRate: rr.ltc_admits ? (rr.ltc_rtas / rr.ltc_admits) * 100 : null,
+    } : null;
   });
 
   const facilities = Object.values(byId).sort((a, b) => (b.census || 0) - (a.census || 0));
