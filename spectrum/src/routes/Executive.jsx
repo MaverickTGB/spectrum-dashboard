@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  BarChart, Bar, Cell, Legend,
+  BarChart, Bar, Cell,
 } from "recharts";
 import { signOut } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
+import { supabase } from "../lib/supabase.js";
 
 /* ————————————————————— Spectrum design tokens ————————————————————— */
 const T = {
@@ -69,91 +70,11 @@ const PulseLine = ({ color = T.teal, width = 46 }) => (
   </svg>
 );
 
-/* ————————————————— Real data · July_26.xlsx · through Jul 9, 2026 ————————————————— */
-const dayLabels = ["Jul 1","Jul 2","Jul 3","Jul 4","Jul 5","Jul 6","Jul 7","Jul 8","Jul 9"];
-
-// Per-facility: avg daily Spectrum census, total building census, non-Spectrum patients,
-// opportunity % (share of building not on Spectrum), SNF/LTC mix, daily census Jul 1–9
-const facilities = [
-  { name: "Meadowlake Estates", census: 117.3, building: 117.3, nonSpec: 0, opp: 0, snf: 11.2, ltc: 106.1, trend: [119,118,118,118,118,117,116,116,116] },
-  { name: "Oak Hills", census: 114.6, building: 114.6, nonSpec: 0, opp: 0, snf: 6.6, ltc: 108, trend: [116,116,115,115,115,114,113,113,114] },
-  { name: "Medical Park West", census: 100.8, building: 100.8, nonSpec: 0, opp: 0, snf: 38.8, ltc: 62, trend: [100,103,99,98,99,103,102,103,100] },
-  { name: "Midwest Post Acute", census: 96.9, building: 96.9, nonSpec: 0, opp: 0, snf: 13.6, ltc: 83.3, trend: [97,96,96,96,94,98,98,99,98] },
-  { name: "Southpointe", census: 93.9, building: 210.7, nonSpec: 116.8, opp: 55.4, snf: 3, ltc: 90.9, trend: [94,94,94,94,94,94,94,94,93] },
-  { name: "Ranchwood", census: 90, building: 104.9, nonSpec: 14.9, opp: 14.2, snf: 12.8, ltc: 77.2, trend: [90,90,90,90,90,89,90,90,91] },
-  { name: "Edmond Healthcare", census: 77, building: 77, nonSpec: 0, opp: 0, snf: 3.7, ltc: 73.3, trend: [77,77,77,77,77,77,77,77,77] },
-  { name: "Ignite OKC", census: 71.8, building: 71.8, nonSpec: 0, opp: 0, snf: 69.8, ltc: 2, trend: [70,71,74,74,73,72,71,72,69] },
-  { name: "Montevista", census: 69.4, building: 84.4, nonSpec: 15, opp: 17.8, snf: 16.1, ltc: 53.3, trend: [69,71,72,71,71,69,68,67,67] },
-  { name: "Noble", census: 69.1, building: 84.1, nonSpec: 15, opp: 17.8, snf: 5.6, ltc: 63.6, trend: [69,70,71,69,68,68,69,69,69] },
-  { name: "Warr Acres", census: 69, building: 71, nonSpec: 2, opp: 2.8, snf: 1, ltc: 68, trend: [69,69,69,69,69,69,69,69,69] },
-  { name: "Emerald Southwest", census: 68.8, building: 68.8, nonSpec: 0, opp: 0, snf: 13.9, ltc: 54.9, trend: [71,70,71,68,67,68,66,69,69] },
-  { name: "Ignite Edmond", census: 68.2, building: 68.2, nonSpec: 0, opp: 0, snf: 37.1, ltc: 31.1, trend: [73,74,73,70,66,61,63,68,66] },
-  { name: "Park Place", census: 64.9, building: 64.9, nonSpec: 0, opp: 0, snf: 3.8, ltc: 61.1, trend: [64,65,65,65,65,65,65,65,65] },
-  { name: "Heritage Nursing Home - Tecumseh", census: 57.9, building: 57.9, nonSpec: 0, opp: 0, snf: 3.7, ltc: 54.2, trend: [59,58,58,58,58,58,57,57,58] },
-  { name: "Luxe Life", census: 51, building: 68.1, nonSpec: 17.1, opp: 25.1, snf: 51, ltc: 0, trend: [51,51,51,51,51,51,51,51,51] },
-  { name: "Lodge at Brookline", census: 48.8, building: 48.8, nonSpec: 0, opp: 0, snf: 2.8, ltc: 46, trend: [49,50,49,49,49,49,48,48,48] },
-  { name: "Heritage Manor", census: 48, building: 48, nonSpec: 0, opp: 0, snf: 1.8, ltc: 46.2, trend: [48,48,48,47,47,47,49,49,49] },
-  { name: "Accel Crystal Park", census: 45.9, building: 56.2, nonSpec: 10.3, opp: 18.3, snf: 35, ltc: 10.9, trend: [42,44,44,46,44,47,48,49,49] },
-  { name: "Emerald Midwest", census: 45.3, building: 67.9, nonSpec: 22.6, opp: 33.3, snf: 13.8, ltc: 31.6, trend: [41,45,46,46,46,46,46,46,46] },
-  { name: "Heritage Park", census: 43.1, building: 43.1, nonSpec: 0, opp: 0, snf: 1, ltc: 42.1, trend: [43,43,43,43,43,44,43,43,43] },
-  { name: "The Garden", census: 42, building: 69.8, nonSpec: 27.8, opp: 39.8, snf: 42, ltc: 0, trend: [42,42,42,42,42,42,42,42,42] },
-  { name: "OKC Rehab", census: 35, building: 37, nonSpec: 2, opp: 5.4, snf: 35, ltc: 0, trend: [0,0,35,0,0,0,0,0,0] },
-  { name: "Tuscany", census: 31.4, building: 116.4, nonSpec: 85, opp: 73.0, snf: 4.1, ltc: 27.3, trend: [35,31,31,31,31,31,31,31,31] },
-  { name: "Northwinds", census: 28, building: 28, nonSpec: 0, opp: 0, snf: 0, ltc: 28, trend: [28,28,28,28,28,28,28,28,28] },
-  { name: "Ignite Norman", census: 24.6, building: 38.3, nonSpec: 13.8, opp: 36.0, snf: 23.8, ltc: 0.8, trend: [27,26,25,25,25,25,24,23,21] },
-  { name: "Pam Health", census: 20.4, building: 30.1, nonSpec: 9.8, opp: 32.6, snf: 20.4, ltc: 0, trend: [20,20,20,21,21,20,20,21,0] },
-  { name: "Inspire", census: 8.6, building: 8.6, nonSpec: 0, opp: 0, snf: 8.6, ltc: 0, trend: [9,9,9,8,7,7,8,12,0] },
-  { name: "Windsor Hills", census: 5.7, building: 46.9, nonSpec: 41.2, opp: 87.8, snf: 1.6, ltc: 4.1, trend: [6,6,6,6,6,6,5,5,5] },
-  { name: "SSM Rehab", census: 5.5, building: 5.5, nonSpec: 0, opp: 0, snf: 5.5, ltc: 0, trend: [5,6,6,5,5,5,6,6,0] },
-];
-
-const portfolioTrend = dayLabels.map((d, i) => ({
-  d, census: facilities.reduce((s, f) => s + (f.trend[i] || 0), 0),
-}));
-
-// Patient type mix (Overview sheet)
-const patientTypes = [
-  { type: "LTC", count: 1165 },
-  { type: "SNF", count: 320.4 },
-  { type: "AL", count: 93 },
-  { type: "Rehab", count: 40.5 },
-  { type: "LTAC", count: 29 },
-];
-
-// Liaison monthly totals (Overview sheet)
-const liaisons = [
-  { name: "Lori Huntley", hrs: 81.5, ot: 1.5, notes: 77 },
-  { name: "Tracey Minyard", hrs: 80, ot: 0, notes: 51 },
-  { name: "Chyna Deloney", hrs: 75.73, ot: 4.81, notes: 0 },
-  { name: "Jessica Dees", hrs: 68.09, ot: 1.99, notes: 22 },
-  { name: "Kelly Venard", hrs: 66.13, ot: 0, notes: 65 },
-  { name: "Maurissa Clark", hrs: 63.17, ot: 0, notes: 27 },
-  { name: "Mariah Lunsford", hrs: 59.98, ot: 0, notes: 0 },
-  { name: "Heather Metcalf", hrs: 58.7, ot: 18.7, notes: 103 },
-  { name: "Cassidy Anders", hrs: 54.96, ot: 0, notes: 0 },
-  { name: "Jennefer Poole", hrs: 42.5, ot: 0, notes: 58 },
-  { name: "Ariana Diaz", hrs: 38.9, ot: 0, notes: 0 },
-  { name: "Carla Deleon Diaz", hrs: 25.98, ot: 0, notes: 17 },
-  { name: "Bridget Baysinger", hrs: 0, ot: 0, notes: 0 },
-];
-
-// MG census by facility (MG sheet, avg daily)
-const mgCensus = [
-  { code: "MV", avg: 15 },
-  { code: "EMW", avg: 10.4 },
-  { code: "ACP", avg: 10.3 },
-  { code: "RW", avg: 8.9 },
-  { code: "OKCRH", avg: 2 },
-];
-
-/* ————————————————————— Portfolio KPIs ————————————————————— */
-const totalCensus = 1647.9;      // avg daily Spectrum census (Overview total)
-const totalBuilding = 2041.1;    // avg daily total building census
-const totalOpportunity = 393.2;  // non-Spectrum patients
-const captureRate = 80.7;        // Spectrum share of building census
-const liaisonHrs = liaisons.reduce((s, l) => s + l.hrs, 0);
-const liaisonOT = liaisons.reduce((s, l) => s + l.ot, 0);
-const liaisonNotes = liaisons.reduce((s, l) => s + l.notes, 0);
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const monthLabel = (iso) => { const [y,m] = iso.split("-"); return `${MONTHS[+m-1]} ${y}`; };
+const shortDay = (iso) => { const [ , m, d] = iso.split("-"); return `${MONTHS[+m-1].slice(0,3)} ${+d}`; };
+const n1 = (v) => (v == null ? "—" : Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 }));
+const n0 = (v) => (v == null ? "—" : Math.round(Number(v)).toLocaleString());
 
 const ChartTip = ({ active, payload, label, fmt }) => {
   if (!active || !payload?.length) return null;
@@ -182,49 +103,66 @@ const Kpi = ({ label, value, sub, good = true }) => (
   </div>
 );
 
+const Empty = ({ children }) => (
+  <div className="ed-card p-6" style={{ color: T.inkSoft, fontSize: 13.5, lineHeight: 1.6, borderLeft: `4px solid ${T.amber}` }}>
+    {children}
+  </div>
+);
+
 /* ————————————————————— Tab: Overview ————————————————————— */
-function OverviewTab({ goToFacility }) {
-  const topOpp = [...facilities].filter((f) => f.nonSpec > 5).sort((a, b) => b.nonSpec - a.nonSpec).slice(0, 6);
+function OverviewTab({ data, month, goToFacility }) {
+  const { facilities, portfolioTrend, kpis, mixData, hasGrowth, hasLiaison } = data;
+  const topOpp = facilities.filter((f) => f.nonSpec != null && f.nonSpec > 5).sort((a, b) => b.nonSpec - a.nonSpec).slice(0, 6);
   return (
     <>
       <section className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Kpi label="Avg daily census" value={totalCensus.toLocaleString(undefined,{maximumFractionDigits:0})} sub="30 facilities · Spectrum patients" />
-        <Kpi label="Building census" value={totalBuilding.toLocaleString(undefined,{maximumFractionDigits:0})} sub="Total patients in buildings" />
-        <Kpi label="Capture rate" value={`${captureRate}%`} sub="Spectrum share of buildings" />
-        <Kpi label="Growth opportunity" value={Math.round(totalOpportunity)} sub="Non-Spectrum patients (19.3%)" good={false} />
-        <Kpi label="Liaison notes" value={liaisonNotes} sub={`${liaisonHrs.toFixed(0)} hrs worked MTD`} />
+        <Kpi label="Avg daily census" value={n0(kpis.totalCensus)} sub={`${facilities.length} facilities · Spectrum patients`} />
+        <Kpi label="Building census" value={n0(kpis.totalBuilding)} sub={hasGrowth ? "Total patients in buildings" : "No building data this month"} good={hasGrowth} />
+        <Kpi label="Capture rate" value={kpis.captureRate == null ? "—" : `${kpis.captureRate}%`} sub={hasGrowth ? "Spectrum share of buildings" : "Needs building data"} good={hasGrowth} />
+        <Kpi label="Growth opportunity" value={n0(kpis.totalOpportunity)} sub={hasGrowth ? "Non-Spectrum patients" : "Needs building data"} good={false} />
+        <Kpi label="Liaison notes" value={hasLiaison ? kpis.liaisonNotes : "—"} sub={hasLiaison ? `${n0(kpis.liaisonHrs)} hrs worked` : "No liaison data this month"} good={hasLiaison} />
       </section>
 
-      <div className="ed-card p-5 flex gap-4 items-start" style={{ margin: "20px 0 32px", background: T.tealSoft, border: "1px solid #C6E0E2" }}>
-        <PulseLine width={60} />
-        <p style={{ fontSize: 14, color: T.ink, lineHeight: 1.6, margin: 0, maxWidth: 900 }}>
-          Nearly <strong style={{ color: T.teal }}>400 patients</strong> in your buildings aren't on Spectrum service.
-          The three biggest pools: <strong>Southpointe</strong> (117 patients, 55% of the building),{" "}
-          <strong>Tuscany</strong> (85 patients, 73%), and <strong>Windsor Hills</strong> (41 patients, 88% —
-          only 5.7 on service). Ignite Norman's census is also sliding: 27 → 21 over nine days.
-        </p>
-      </div>
+      {hasGrowth && topOpp.length > 0 ? (
+        <div className="ed-card p-5 flex gap-4 items-start" style={{ margin: "20px 0 32px", background: T.tealSoft, border: "1px solid #C6E0E2" }}>
+          <PulseLine width={60} />
+          <p style={{ fontSize: 14, color: T.ink, lineHeight: 1.6, margin: 0, maxWidth: 900 }}>
+            <strong style={{ color: T.teal }}>{n0(kpis.totalOpportunity)} patients</strong> in your buildings aren't on Spectrum service. Biggest pools:{" "}
+            {topOpp.slice(0, 3).map((f, i) => (
+              <span key={f.name}>{i > 0 ? ", " : ""}<strong>{f.name}</strong> ({Math.round(f.nonSpec)}, {f.opp}%)</span>
+            ))}.
+          </p>
+        </div>
+      ) : (
+        <div style={{ margin: "20px 0 32px" }}>
+          <Empty>
+            Building-census and non-Spectrum figures aren't loaded for {monthLabel(month)} yet — those come from the growth report, not the facility reports. Census, SNF/LTC split, and RTA below are live.
+          </Empty>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8" style={{ marginBottom: 36 }}>
         <div>
-          <SectionLabel right="Data through Jul 9">Portfolio daily census</SectionLabel>
+          <SectionLabel right={`${portfolioTrend.length} days`}>Portfolio daily census</SectionLabel>
           <div className="ed-card p-4" style={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={portfolioTrend} margin={{ top: 10, right: 10, bottom: 0, left: -6 }}>
-                <CartesianGrid stroke={T.hairline} vertical={false} />
-                <XAxis dataKey="d" tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={{ stroke: T.hairline }} tickLine={false} />
-                <YAxis domain={[1550, 1780]} tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={false} tickLine={false} />
-                <Tooltip content={<ChartTip />} />
-                <Line type="monotone" dataKey="census" name="Spectrum census" stroke={T.teal} strokeWidth={2.5} dot={{ r: 3, fill: T.teal }} />
-              </LineChart>
-            </ResponsiveContainer>
+            {portfolioTrend.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={portfolioTrend} margin={{ top: 10, right: 10, bottom: 0, left: -6 }}>
+                  <CartesianGrid stroke={T.hairline} vertical={false} />
+                  <XAxis dataKey="d" tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={{ stroke: T.hairline }} tickLine={false} interval={Math.max(0, Math.floor(portfolioTrend.length / 8))} />
+                  <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<ChartTip />} />
+                  <Line type="monotone" dataKey="census" name="Spectrum census" stroke={T.teal} strokeWidth={2.5} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : <div style={{ color: T.inkSoft, fontSize: 13, padding: 20 }}>No daily census for this month.</div>}
           </div>
         </div>
         <div>
-          <SectionLabel right="Avg daily patients">Patient type mix</SectionLabel>
+          <SectionLabel right="Avg daily patients">Portfolio SNF vs LTC</SectionLabel>
           <div className="ed-card p-4" style={{ height: 260 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={patientTypes} margin={{ top: 10, right: 10, bottom: 0, left: -6 }}>
+              <BarChart data={mixData} margin={{ top: 10, right: 10, bottom: 0, left: -6 }}>
                 <CartesianGrid stroke={T.hairline} vertical={false} />
                 <XAxis dataKey="type" tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={{ stroke: T.hairline }} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={false} tickLine={false} />
@@ -237,34 +175,34 @@ function OverviewTab({ goToFacility }) {
       </div>
 
       <SectionLabel right="Ranked by non-Spectrum patients">Largest growth opportunities</SectionLabel>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {topOpp.map((f) => (
-          <button key={f.name} onClick={() => goToFacility(f.name)} className="ed-card p-5 text-left" style={{ cursor: "pointer", borderLeft: `4px solid ${f.opp > 50 ? T.alert : T.amber}` }}>
-            <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
-              <span style={{ fontSize: 14, fontWeight: 600 }}>{f.name}</span>
-              <span className="ed-num" style={{ fontSize: 12, color: f.opp > 50 ? T.alert : T.amber, fontWeight: 600 }}>{f.opp}%</span>
-            </div>
-            <div className="ed-num" style={{ fontSize: 12, color: T.inkSoft }}>
-              {Math.round(f.nonSpec)} of {Math.round(f.building)} patients not on service
-            </div>
-            <div style={{ height: 6, background: T.hairline, borderRadius: 3, marginTop: 10 }}>
-              <div style={{ height: 6, width: `${100 - f.opp}%`, background: T.teal, borderRadius: 3 }} />
-            </div>
-            <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 6 }}>Spectrum census {f.census}</div>
-          </button>
-        ))}
-      </div>
+      {hasGrowth && topOpp.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {topOpp.map((f) => (
+            <button key={f.name} onClick={() => goToFacility(f.name)} className="ed-card p-5 text-left" style={{ cursor: "pointer", borderLeft: `4px solid ${f.opp > 50 ? T.alert : T.amber}` }}>
+              <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>{f.name}</span>
+                <span className="ed-num" style={{ fontSize: 12, color: f.opp > 50 ? T.alert : T.amber, fontWeight: 600 }}>{f.opp}%</span>
+              </div>
+              <div className="ed-num" style={{ fontSize: 12, color: T.inkSoft }}>{Math.round(f.nonSpec)} of {Math.round(f.building)} not on service</div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <Empty>No non-Spectrum / building data for {monthLabel(month)}. This populates once the growth report is loaded for the month.</Empty>
+      )}
     </>
   );
 }
 
 /* ————————————————————— Tab: Facilities ————————————————————— */
-function FacilitiesTab({ selectedName, setSelectedName }) {
+function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
   const [filter, setFilter] = useState("All");
-  const visible = filter === "All" ? facilities : facilities.filter((f) => f.nonSpec > 0);
+  const facilities = data.facilities;
+  const visible = filter === "All" ? facilities : facilities.filter((f) => f.nonSpec != null && f.nonSpec > 0);
   const sel = facilities.find((f) => f.name === selectedName) || facilities[0];
-  const selTrend = dayLabels.map((d, i) => ({ d, census: sel.trend[i] }));
-  const mix = [{ type: "SNF", count: sel.snf }, { type: "LTC", count: sel.ltc }];
+  if (!sel) return <Empty>No facility data for {monthLabel(month)}.</Empty>;
+  const selTrend = (sel.trendDates || []).map((d, i) => ({ d: shortDay(d), census: sel.trend[i] }));
+  const mix = [{ type: "SNF", count: sel.snf ?? 0 }, { type: "LTC", count: sel.ltc ?? 0 }];
 
   return (
     <>
@@ -291,16 +229,16 @@ function FacilitiesTab({ selectedName, setSelectedName }) {
           </thead>
           <tbody>
             {visible.map((f) => {
-              const cap = f.building ? Math.round((f.census / f.building) * 100) : 100;
+              const cap = f.building ? Math.round((f.census / f.building) * 100) : null;
               return (
                 <tr key={f.name} className="ed-row" onClick={() => setSelectedName(f.name)} style={{ borderBottom: `1px solid ${T.hairline}`, background: f.name === sel.name ? T.tealSoft : "transparent" }}>
                   <td className="py-3 pr-4" style={{ fontSize: 13.5, fontWeight: 600, paddingLeft: 20 }}>{f.name}</td>
-                  <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{f.census}</td>
-                  <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{f.building}</td>
+                  <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{n1(f.census)}</td>
+                  <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{n1(f.building)}</td>
                   <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: f.nonSpec > 20 ? T.alert : f.nonSpec > 0 ? T.amber : T.ink }}>{f.nonSpec ? Math.round(f.nonSpec) : "—"}</td>
-                  <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: cap < 70 ? T.alert : cap < 95 ? T.amber : T.teal, fontWeight: 600 }}>{cap}%</td>
-                  <td className="ed-num py-3 pr-4" style={{ fontSize: 12.5, color: T.inkSoft }}>{f.snf}</td>
-                  <td className="ed-num py-3 pr-4" style={{ fontSize: 12.5, color: T.inkSoft }}>{f.ltc}</td>
+                  <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: cap == null ? T.inkSoft : cap < 70 ? T.alert : cap < 95 ? T.amber : T.teal, fontWeight: 600 }}>{cap == null ? "—" : cap + "%"}</td>
+                  <td className="ed-num py-3 pr-4" style={{ fontSize: 12.5, color: T.inkSoft }}>{n1(f.snf)}</td>
+                  <td className="ed-num py-3 pr-4" style={{ fontSize: 12.5, color: T.inkSoft }}>{n1(f.ltc)}</td>
                 </tr>
               );
             })}
@@ -311,24 +249,24 @@ function FacilitiesTab({ selectedName, setSelectedName }) {
       <div className="flex items-center gap-3" style={{ marginBottom: 14 }}>
         <h2 className="ed-display" style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>{sel.name}</h2>
         <PulseLine color={sel.opp > 50 ? T.alert : T.teal} />
-        <span className="ed-num" style={{ fontSize: 12, color: T.inkSoft }}>
-          avg census {sel.census}{sel.nonSpec > 0 ? ` · ${Math.round(sel.nonSpec)} patients not on service` : " · full building capture"}
-        </span>
+        <span className="ed-num" style={{ fontSize: 12, color: T.inkSoft }}>avg census {n1(sel.census)}</span>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div>
-          <SectionLabel right="Jul 1–9">Daily Spectrum census</SectionLabel>
+          <SectionLabel right={monthLabel(month)}>Daily Spectrum census</SectionLabel>
           <div className="ed-card p-4" style={{ height: 230 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={selTrend} margin={{ top: 10, right: 10, bottom: 0, left: -18 }}>
-                <CartesianGrid stroke={T.hairline} vertical={false} />
-                <XAxis dataKey="d" tick={{ fontSize: 10, fill: T.inkSoft }} axisLine={{ stroke: T.hairline }} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: T.inkSoft }} axisLine={false} tickLine={false} />
-                <Tooltip content={<ChartTip />} />
-                <Line type="monotone" dataKey="census" name="Census" stroke={T.teal} strokeWidth={2.5} dot={{ r: 3, fill: T.teal }} />
-              </LineChart>
-            </ResponsiveContainer>
+            {selTrend.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={selTrend} margin={{ top: 10, right: 10, bottom: 0, left: -18 }}>
+                  <CartesianGrid stroke={T.hairline} vertical={false} />
+                  <XAxis dataKey="d" tick={{ fontSize: 10, fill: T.inkSoft }} axisLine={{ stroke: T.hairline }} tickLine={false} interval={Math.max(0, Math.floor(selTrend.length / 8))} />
+                  <YAxis tick={{ fontSize: 10, fill: T.inkSoft }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<ChartTip />} />
+                  <Line type="monotone" dataKey="census" name="Census" stroke={T.teal} strokeWidth={2.5} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : <div style={{ color: T.inkSoft, fontSize: 13, padding: 20 }}>No daily data.</div>}
           </div>
         </div>
         <div>
@@ -338,7 +276,7 @@ function FacilitiesTab({ selectedName, setSelectedName }) {
               {mix.map((m) => (
                 <div key={m.type}>
                   <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.inkSoft, marginBottom: 6 }}>{m.type}</div>
-                  <div className="ed-display" style={{ fontSize: 26, fontWeight: 800 }}>{m.count}</div>
+                  <div className="ed-display" style={{ fontSize: 26, fontWeight: 800 }}>{n1(m.count)}</div>
                 </div>
               ))}
             </div>
@@ -347,7 +285,7 @@ function FacilitiesTab({ selectedName, setSelectedName }) {
               <div style={{ height: 8, width: `${sel.building ? (sel.census / sel.building) * 100 : 100}%`, background: sel.opp > 50 ? T.alert : T.teal, borderRadius: 4 }} />
             </div>
             <div className="ed-num" style={{ fontSize: 12, color: T.inkSoft }}>
-              {sel.census} of {sel.building} building patients on Spectrum service
+              {sel.building ? `${n1(sel.census)} of ${n1(sel.building)} building patients on service` : "No building census this month"}
             </div>
           </div>
         </div>
@@ -356,97 +294,216 @@ function FacilitiesTab({ selectedName, setSelectedName }) {
   );
 }
 
-/* ————————————————————— Tab: Team ————————————————————— */
-function TeamTab() {
+/* ————————————————————— Tab: RTA ————————————————————— */
+function RtaTab({ data, month }) {
+  const rows = data.rta;
+  if (!rows.length) return <Empty>No return-to-acute data for {monthLabel(month)} yet.</Empty>;
+  const tot = rows.reduce((a, r) => ({
+    admits: a.admits + (r.admits || 0), rtas: a.rtas + (r.rtas || 0),
+    ltc_admits: a.ltc_admits + (r.ltc_admits || 0), ltc_rtas: a.ltc_rtas + (r.ltc_rtas || 0),
+    er: a.er + (r.er || 0),
+  }), { admits: 0, rtas: 0, ltc_admits: 0, ltc_rtas: 0, er: 0 });
+  const snfRate = tot.admits ? ((tot.rtas / tot.admits) * 100).toFixed(1) : "—";
+  const ltcRate = tot.ltc_admits ? ((tot.ltc_rtas / tot.ltc_admits) * 100).toFixed(1) : "—";
+  const rateColor = (r) => (r == null ? T.inkSoft : r > 20 ? T.alert : r > 12 ? T.amber : T.teal);
+
   return (
     <>
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginBottom: 32 }}>
-        <Kpi label="Liaison hours MTD" value={liaisonHrs.toFixed(0)} sub="13 liaisons" />
-        <Kpi label="Overtime hours" value={liaisonOT.toFixed(1)} sub="18.7 from one liaison" good={liaisonOT < 15} />
-        <Kpi label="Notes completed" value={liaisonNotes} sub="MTD across the team" />
-        <Kpi label="Notes per hour" value={(liaisonNotes / liaisonHrs).toFixed(2)} sub="Team average" />
+        <Kpi label="SNF RTA rate" value={`${snfRate}%`} sub={`${tot.rtas} of ${tot.admits} SNF admits`} good={snfRate === "—" || +snfRate <= 15} />
+        <Kpi label="LTC RTA rate" value={`${ltcRate}%`} sub={`${tot.ltc_rtas} of ${tot.ltc_admits} LTC admits`} good={ltcRate === "—" || +ltcRate <= 15} />
+        <Kpi label="Total admissions" value={n0(tot.admits + tot.ltc_admits)} sub="SNF + LTC" />
+        <Kpi label="ER visits" value={n0(tot.er)} sub="Across portfolio" good={false} />
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2">
-          <SectionLabel right="Monthly totals · Jul 2026">Liaison performance</SectionLabel>
-          <div className="ed-card" style={{ overflowX: "auto" }}>
-            <table className="w-full" style={{ borderCollapse: "collapse", minWidth: 560 }}>
-              <thead>
-                <tr style={{ borderBottom: `1px solid ${T.hairline}`, background: "#F7FAFB" }}>
-                  {["Liaison", "Hours", "OT", "Notes", "Notes/hr"].map((h) => (
-                    <th key={h} className="text-left py-3" style={{ fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 600, paddingRight: 16, paddingLeft: h === "Liaison" ? 20 : 0 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {liaisons.map((l) => (
-                  <tr key={l.name} style={{ borderBottom: `1px solid ${T.hairline}` }}>
-                    <td className="py-3 pr-4" style={{ fontSize: 13.5, fontWeight: 600, paddingLeft: 20 }}>{l.name}</td>
-                    <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{l.hrs.toFixed(1)}</td>
-                    <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: l.ot > 5 ? T.alert : l.ot > 0 ? T.amber : T.ink }}>{l.ot ? l.ot.toFixed(1) : "—"}</td>
-                    <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{l.notes || "—"}</td>
-                    <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{l.hrs ? (l.notes / l.hrs).toFixed(2) : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div>
-          <SectionLabel right="Avg daily patients">MG census by facility</SectionLabel>
-          <div className="ed-card p-4" style={{ height: 280 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={mgCensus} layout="vertical" margin={{ top: 10, right: 20, bottom: 0, left: -8 }}>
-                <CartesianGrid stroke={T.hairline} horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={{ stroke: T.hairline }} tickLine={false} />
-                <YAxis type="category" dataKey="code" tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={false} tickLine={false} width={64} />
-                <Tooltip content={<ChartTip />} />
-                <Bar dataKey="avg" name="MG census" radius={[0, 4, 4, 0]} fill={T.teal} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+      <SectionLabel right={`${rows.length} facilities · ${monthLabel(month)}`}>Return-to-acute by facility</SectionLabel>
+      <div className="ed-card" style={{ overflowX: "auto" }}>
+        <table className="w-full" style={{ borderCollapse: "collapse", minWidth: 820 }}>
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${T.hairline}`, background: "#F7FAFB" }}>
+              {["Facility", "SNF admits", "SNF RTA", "SNF rate", "LTC admits", "LTC RTA", "LTC rate", "ER"].map((h) => (
+                <th key={h} className="text-left py-3" style={{ fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 600, paddingRight: 16, paddingLeft: h === "Facility" ? 20 : 0 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.name} style={{ borderBottom: `1px solid ${T.hairline}` }}>
+                <td className="py-3 pr-4" style={{ fontSize: 13.5, fontWeight: 600, paddingLeft: 20 }}>{r.name}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{r.admits ?? "—"}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{r.rtas ?? "—"}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, fontWeight: 600, color: rateColor(r.snfRate) }}>{r.snfRate == null ? "—" : r.snfRate.toFixed(1) + "%"}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{r.ltc_admits ?? "—"}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{r.ltc_rtas ?? "—"}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, fontWeight: 600, color: rateColor(r.ltcRate) }}>{r.ltcRate == null ? "—" : r.ltcRate.toFixed(1) + "%"}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{r.er ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 12 }}>
+        RTA rate = returns to acute ÷ admissions. Amber above 12%, red above 20% — adjust these thresholds to your benchmark anytime.
+      </p>
+    </>
+  );
+}
+
+/* ————————————————————— Tab: Team ————————————————————— */
+function TeamTab({ data, month }) {
+  const liaisons = data.liaisons;
+  if (!liaisons.length) return <Empty>No liaison data for {monthLabel(month)} yet.</Empty>;
+  const hrs = liaisons.reduce((s, l) => s + (l.hours || 0), 0);
+  const ot = liaisons.reduce((s, l) => s + (l.ot || 0), 0);
+  const notes = liaisons.reduce((s, l) => s + (l.notes || 0), 0);
+  return (
+    <>
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginBottom: 32 }}>
+        <Kpi label="Liaison hours" value={n0(hrs)} sub={`${liaisons.length} liaisons`} />
+        <Kpi label="Overtime hours" value={n1(ot)} sub="Month to date" good={ot < 15} />
+        <Kpi label="Notes completed" value={notes} sub="Across the team" />
+        <Kpi label="Notes per hour" value={hrs ? (notes / hrs).toFixed(2) : "—"} sub="Team average" />
+      </section>
+      <SectionLabel right={`Monthly totals · ${monthLabel(month)}`}>Liaison performance</SectionLabel>
+      <div className="ed-card" style={{ overflowX: "auto" }}>
+        <table className="w-full" style={{ borderCollapse: "collapse", minWidth: 560 }}>
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${T.hairline}`, background: "#F7FAFB" }}>
+              {["Liaison", "Hours", "OT", "Notes", "Notes/hr"].map((h) => (
+                <th key={h} className="text-left py-3" style={{ fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 600, paddingRight: 16, paddingLeft: h === "Liaison" ? 20 : 0 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {liaisons.map((l) => (
+              <tr key={l.name} style={{ borderBottom: `1px solid ${T.hairline}` }}>
+                <td className="py-3 pr-4" style={{ fontSize: 13.5, fontWeight: 600, paddingLeft: 20 }}>{l.name}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{n1(l.hours)}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: l.ot > 5 ? T.alert : l.ot > 0 ? T.amber : T.ink }}>{l.ot ? n1(l.ot) : "—"}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{l.notes || "—"}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{l.hours ? (l.notes / l.hours).toFixed(2) : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </>
   );
 }
 
-/* ————————————————————— Tab: Financials ————————————————————— */
-function FinancialsTab() {
-  return (
-    <>
-      <SectionLabel right="From July_26.xlsx">Financial &amp; quality tracking</SectionLabel>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="ed-card p-6" style={{ borderLeft: `4px solid ${T.amber}` }}>
-          <div style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: T.inkSoft, marginBottom: 8, fontWeight: 600 }}>Weekly AR · Billed vs collected</div>
-          <div className="ed-display" style={{ fontSize: 22, fontWeight: 800, marginBottom: 10 }}>Awaiting July data</div>
-          <p style={{ fontSize: 13.5, color: T.inkSoft, lineHeight: 1.6, margin: 0 }}>
-            The Weekly AR section of the workbook has billed and collected columns set up per provider by week,
-            but no July entries yet. Once billing posts, this panel will show weekly billed vs collected trends
-            and provider-level collection rates.
-          </p>
-        </div>
-        <div className="ed-card p-6" style={{ borderLeft: `4px solid ${T.amber}` }}>
-          <div style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: T.inkSoft, marginBottom: 8, fontWeight: 600 }}>RTA rates by facility</div>
-          <div className="ed-display" style={{ fontSize: 22, fontWeight: 800, marginBottom: 10 }}>Awaiting July data</div>
-          <p style={{ fontSize: 13.5, color: T.inkSoft, lineHeight: 1.6, margin: 0 }}>
-            The RTA Rates table lists all facility codes with admits and RTA count columns, but they're empty
-            for July so far. When admits and returns to acute are logged, this panel will show RTA% per facility
-            against your target with month-over-month direction.
-          </p>
-        </div>
-      </div>
-    </>
-  );
+/* ————————————————————— Data loading ————————————————————— */
+function lastDayOfMonth(iso) {
+  const [y, m] = iso.split("-").map(Number);
+  return `${iso}-${new Date(y, m, 0).getDate()}`;
+}
+
+async function loadMonthData(monthIso) {
+  const start = `${monthIso}-01`;
+  const end = lastDayOfMonth(monthIso);
+  const [facs, fm, fg, rta, dc, lm] = await Promise.all([
+    supabase.from("facilities").select("id, name, code"),
+    supabase.from("facility_monthly").select("facility_id, avg_spectrum_census, avg_snf, avg_ltc").eq("month", start),
+    supabase.from("facility_growth").select("facility_id, avg_building_census, avg_non_spectrum").eq("month", start),
+    supabase.from("rta_monthly").select("facility_id, admits, rtas, ltc_admits, ltc_rtas, er_visits").eq("month", start),
+    supabase.from("daily_census").select("facility_id, census_date, spectrum_census").gte("census_date", start).lte("census_date", end),
+    supabase.from("liaison_monthly").select("hours, ot_hours, notes_count, liaisons(name)").eq("month", start),
+  ]);
+  const err = facs.error || fm.error || fg.error || rta.error || dc.error || lm.error;
+  if (err) throw err;
+
+  const facById = {};
+  (facs.data || []).forEach((f) => { facById[f.id] = f; });
+
+  const byId = {};
+  (fm.data || []).forEach((r) => {
+    byId[r.facility_id] = { facility_id: r.facility_id, name: facById[r.facility_id]?.name || `#${r.facility_id}`,
+      census: r.avg_spectrum_census, snf: r.avg_snf, ltc: r.avg_ltc, building: null, nonSpec: null };
+  });
+  (fg.data || []).forEach((r) => {
+    const o = byId[r.facility_id] || (byId[r.facility_id] = { facility_id: r.facility_id, name: facById[r.facility_id]?.name || `#${r.facility_id}`, census: null, snf: null, ltc: null });
+    o.building = r.avg_building_census; o.nonSpec = r.avg_non_spectrum;
+  });
+
+  // daily per facility + portfolio trend
+  const dailyByFac = {}, byDate = {};
+  (dc.data || []).forEach((r) => {
+    (dailyByFac[r.facility_id] = dailyByFac[r.facility_id] || []).push([r.census_date, r.spectrum_census]);
+    byDate[r.census_date] = (byDate[r.census_date] || 0) + (r.spectrum_census || 0);
+  });
+  Object.values(byId).forEach((o) => {
+    const arr = (dailyByFac[o.facility_id] || []).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    o.trendDates = arr.map((x) => x[0]); o.trend = arr.map((x) => x[1]);
+  });
+  const portfolioTrend = Object.keys(byDate).sort().map((d) => ({ d: shortDay(d), census: Math.round(byDate[d]) }));
+
+  Object.values(byId).forEach((o) => {
+    if (o.nonSpec == null && o.building != null && o.census != null) o.nonSpec = Math.max(o.building - o.census, 0);
+    o.opp = o.building && o.building > 0 && o.nonSpec != null ? Math.round((o.nonSpec / o.building) * 100) : null;
+  });
+
+  const facilities = Object.values(byId).sort((a, b) => (b.census || 0) - (a.census || 0));
+  const hasGrowth = (fg.data || []).length > 0;
+
+  const sum = (arr, k) => arr.reduce((s, x) => s + (x[k] || 0), 0);
+  const totalCensus = sum(facilities, "census");
+  const totalBuilding = hasGrowth ? sum(facilities, "building") : null;
+  const totalOpportunity = hasGrowth ? sum(facilities, "nonSpec") : null;
+  const captureRate = totalBuilding ? Math.round((totalCensus / totalBuilding) * 1000) / 10 : null;
+  const totalSnf = sum(facilities, "snf"), totalLtc = sum(facilities, "ltc");
+
+  const liaisons = (lm.data || []).map((l) => ({
+    name: l.liaisons?.name || "—", hours: l.hours, ot: l.ot_hours, notes: l.notes_count,
+  })).sort((a, b) => (b.hours || 0) - (a.hours || 0));
+  const hasLiaison = liaisons.length > 0;
+  const liaisonNotes = liaisons.reduce((s, l) => s + (l.notes || 0), 0);
+  const liaisonHrs = liaisons.reduce((s, l) => s + (l.hours || 0), 0);
+
+  const rtaRows = (rta.data || []).map((r) => ({
+    name: facById[r.facility_id]?.name || `#${r.facility_id}`,
+    admits: r.admits, rtas: r.rtas, ltc_admits: r.ltc_admits, ltc_rtas: r.ltc_rtas, er: r.er_visits,
+    snfRate: r.admits ? (r.rtas / r.admits) * 100 : null,
+    ltcRate: r.ltc_admits ? (r.ltc_rtas / r.ltc_admits) * 100 : null,
+  })).sort((a, b) => (b.snfRate ?? -1) - (a.snfRate ?? -1));
+
+  return {
+    facilities, portfolioTrend, rta: rtaRows, liaisons, hasGrowth, hasLiaison,
+    mixData: [{ type: "SNF", count: Math.round(totalSnf) }, { type: "LTC", count: Math.round(totalLtc) }],
+    kpis: { totalCensus, totalBuilding, totalOpportunity, captureRate, liaisonNotes, liaisonHrs },
+  };
 }
 
 /* ————————————————————— App shell ————————————————————— */
-export default function SpectrumExecutiveDashboard() {
+export default function Executive() {
   const [tab, setTab] = useState("Overview");
-  const [selectedName, setSelectedName] = useState("Southpointe");
+  const [selectedName, setSelectedName] = useState(null);
+  const [months, setMonths] = useState([]);
+  const [month, setMonth] = useState(null);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
   const { profile } = useAuth();
-  const tabs = ["Overview", "Facilities", "Team", "Financials"];
+  const tabs = ["Overview", "Facilities", "RTA", "Team", "Financials"];
+
+  useEffect(() => {
+    (async () => {
+      const { data: mrows, error } = await supabase.from("facility_monthly").select("month").order("month", { ascending: false });
+      if (error) { setErr(error.message); setLoading(false); return; }
+      const uniq = [...new Set((mrows || []).map((r) => r.month))];
+      setMonths(uniq);
+      setMonth(uniq[0] || null);
+      if (!uniq.length) setLoading(false);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!month) return;
+    setLoading(true); setErr(null);
+    loadMonthData(month)
+      .then((d) => { setData(d); if (!selectedName && d.facilities[0]) setSelectedName(d.facilities[0].name); })
+      .catch((e) => setErr(e.message || "Failed to load data"))
+      .finally(() => setLoading(false));
+  }, [month]);
+
   const goToFacility = (name) => { setSelectedName(name); setTab("Facilities"); };
 
   return (
@@ -460,7 +517,7 @@ export default function SpectrumExecutiveDashboard() {
             <div style={{ borderLeft: `1px solid ${T.hairline}`, paddingLeft: 16 }}>
               <div className="flex items-center gap-2" style={{ marginBottom: 4 }}>
                 <PulseLine width={38} />
-                <span style={{ fontSize: 11, color: T.inkSoft }}>July 2026 · data through Jul 9</span>
+                <span style={{ fontSize: 11, color: T.inkSoft }}>{month ? monthLabel(month) : "—"}</span>
               </div>
               <h1 className="ed-display" style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.05, letterSpacing: "-0.01em", margin: 0 }}>
                 Executive Dashboard
@@ -468,9 +525,17 @@ export default function SpectrumExecutiveDashboard() {
             </div>
           </div>
           <nav className="flex items-center gap-2" aria-label="Dashboard sections">
+            {months.length > 0 && (
+              <select value={month || ""} onChange={(e) => setMonth(e.target.value)} className="ed-ui" style={{
+                fontSize: 13, padding: "9px 14px", borderRadius: 99, border: `1px solid ${T.hairline}`,
+                background: "transparent", color: T.ink, fontWeight: 600, cursor: "pointer", marginRight: 4,
+              }}>
+                {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+              </select>
+            )}
             {tabs.map((t) => (
               <button key={t} onClick={() => setTab(t)} className="ed-ui" style={{
-                fontSize: 13, padding: "9px 20px", cursor: "pointer", borderRadius: 99,
+                fontSize: 13, padding: "9px 18px", cursor: "pointer", borderRadius: 99,
                 border: `1px solid ${tab === t ? T.teal : T.hairline}`,
                 background: tab === t ? T.teal : "transparent",
                 color: tab === t ? "#FFF" : T.inkSoft, fontWeight: 600,
@@ -478,9 +543,7 @@ export default function SpectrumExecutiveDashboard() {
             ))}
             <div style={{ width: 1, height: 22, background: T.hairline, margin: "0 4px" }} />
             {profile?.email && (
-              <span className="ed-num" style={{ fontSize: 11, color: T.inkSoft, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={profile.email}>
-                {profile.email}
-              </span>
+              <span className="ed-num" style={{ fontSize: 11, color: T.inkSoft, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={profile.email}>{profile.email}</span>
             )}
             <button onClick={async () => { await signOut(); window.location.href = "/login"; }} className="ed-ui" style={{
               fontSize: 13, padding: "9px 18px", cursor: "pointer", borderRadius: 99,
@@ -491,16 +554,24 @@ export default function SpectrumExecutiveDashboard() {
       </header>
 
       <main className="mx-auto px-6 pb-14 pt-8" style={{ maxWidth: 1280 }}>
-        {tab === "Overview" && <OverviewTab goToFacility={goToFacility} />}
-        {tab === "Facilities" && <FacilitiesTab selectedName={selectedName} setSelectedName={setSelectedName} />}
-        {tab === "Team" && <TeamTab />}
-        {tab === "Financials" && <FinancialsTab />}
+        {loading && <div style={{ color: T.inkSoft, fontSize: 14, padding: "40px 0" }}>Loading {month ? monthLabel(month) : ""}…</div>}
+        {err && !loading && <Empty>Couldn't load data: {err}</Empty>}
+        {!loading && !err && !data && <Empty>No monthly data has been committed yet. Run the aggregation worker, then refresh.</Empty>}
+        {!loading && !err && data && (
+          <>
+            {tab === "Overview" && <OverviewTab data={data} month={month} goToFacility={goToFacility} />}
+            {tab === "Facilities" && <FacilitiesTab data={data} selectedName={selectedName} setSelectedName={setSelectedName} month={month} />}
+            {tab === "RTA" && <RtaTab data={data} month={month} />}
+            {tab === "Team" && <TeamTab data={data} month={month} />}
+            {tab === "Financials" && (
+              <Empty>Weekly AR and financial tracking will appear here once billing data is loaded. Census, RTA, and facility metrics are live in the other tabs.</Empty>
+            )}
+          </>
+        )}
 
         <footer className="flex items-center justify-between" style={{ marginTop: 48, borderTop: `2px solid ${T.teal}`, paddingTop: 14 }}>
-          <span style={{ fontSize: 11, color: T.inkSoft }}>
-            Spectrum Executive Dashboard · Source: July_26.xlsx (census through Jul 9)
-          </span>
-          <span className="ed-num" style={{ fontSize: 11, color: T.inkSoft }}>Updated Jul 13, 2026</span>
+          <span style={{ fontSize: 11, color: T.inkSoft }}>Spectrum Executive Dashboard · Live from Supabase</span>
+          <span className="ed-num" style={{ fontSize: 11, color: T.inkSoft }}>{month ? monthLabel(month) : ""}</span>
         </footer>
       </main>
     </div>
