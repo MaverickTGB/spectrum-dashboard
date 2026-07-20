@@ -35,7 +35,6 @@ export async function fetchMyProfile() {
   if (error) throw error;
   return data;
 }
-}
 
 export async function listOrganizations() {
   const { data, error } = await supabase
