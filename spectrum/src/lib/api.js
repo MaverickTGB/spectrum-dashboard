@@ -25,12 +25,16 @@ export async function requestAccess(email, password, orgSlug) {
 
 /** Load the caller's profile row (approved/status/role/org). */
 export async function fetchMyProfile() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
   const { data, error } = await supabase
     .from("profiles")
     .select("user_id, role, status, org_id, email, full_name")
+    .eq("user_id", user.id)
     .maybeSingle();
   if (error) throw error;
   return data;
+}
 }
 
 export async function listOrganizations() {
