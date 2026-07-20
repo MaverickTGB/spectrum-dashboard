@@ -11,7 +11,7 @@ export default function Admin() {
     setBusy(true); setErr(null);
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, email, status, role, org_id, requested_org_id, created_at")
+    .select("user_id, email, status, role, org_id, requested_org_id, created_at")
       .order("created_at", { ascending: false });
     if (error) setErr(error.message);
     setRows(data || []);
@@ -20,7 +20,7 @@ export default function Admin() {
   useEffect(() => { load(); }, []);
 
   const act = async (id, status) => {
-    const { error } = await supabase.rpc("set_user_status", { p_user: id, p_status: status });
+   const { error } = await supabase.rpc("set_user_status", { target: id, new_status: status });
     if (error) { setErr(error.message); return; }
     load();
   };
@@ -42,7 +42,7 @@ export default function Admin() {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} style={{ borderBottom: `1px solid ${T.hairline}` }}>
+              <tr key={r.user_id} style={{ borderBottom: `1px solid ${T.hairline}` }}>
                 <td style={{ padding: "12px 16px", fontSize: 13.5, fontWeight: 600 }}>{r.email}</td>
                 <td style={{ padding: "12px 16px", fontSize: 13 }}>{r.status}</td>
                 <td style={{ padding: "12px 16px", fontSize: 13, color: T.inkSoft }}>{r.role || "—"}</td>
@@ -50,14 +50,14 @@ export default function Admin() {
                   {r.status === "pending" && (
                     <>
                       <button className="ed-btn ed-btn-primary" style={{ padding: "6px 12px", marginRight: 8 }}
-                        onClick={() => act(r.id, "approved")}>Approve</button>
+                        onClick={() => act(r.user_id, "approved")}>Approve</button>
                       <button className="ed-btn ed-btn-ghost" style={{ padding: "6px 12px" }}
-                        onClick={() => act(r.id, "rejected")}>Reject</button>
+                        onClick={() => act(r.user_id, "rejected")}>Reject</button>
                     </>
                   )}
                   {r.status === "approved" && (
                     <button className="ed-btn ed-btn-ghost" style={{ padding: "6px 12px" }}
-                      onClick={() => act(r.id, "suspended")}>Suspend</button>
+                      onClick={() => act(r.user_id, "suspended")}>Suspend</button>
                   )}
                 </td>
               </tr>
