@@ -27,7 +27,7 @@ export async function requestAccess(email, password, orgSlug) {
 export async function fetchMyProfile() {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, role, status, org_id, email, full_name")
+    .select("user_id, role, status, org_id, email, full_name")
     .maybeSingle();
   if (error) throw error;
   return data;
