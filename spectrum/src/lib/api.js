@@ -16,7 +16,7 @@ export async function requestAccess(email, password, orgSlug) {
   const { data, error } = await supabase.auth.signUp({
     email, password,
     options: {
-      data: { requested_org_slug: orgSlug || null },
+      data: { requested_org: orgSlug || null },
     },
   });
   if (error) throw error;
@@ -39,8 +39,8 @@ export async function fetchMyProfile() {
 export async function listOrganizations() {
   const { data, error } = await supabase
     .from("organizations")
-    .select("id, slug, name")
-    .order("name");
+    .select("id, slug, display_name")
+    .order("display_name");
   if (error) throw error;
   return data || [];
 }
