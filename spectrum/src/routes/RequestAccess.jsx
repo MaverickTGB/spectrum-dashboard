@@ -36,7 +36,6 @@ export default function RequestAccess() {
       <style>{fontStyles}</style>
       <div style={{ width: "100%", maxWidth: 420 }}>
         <h1 style={{ fontSize: 26, fontWeight: 800, margin: "0 0 18px" }}>Request access</h1>
-
         {ok ? (
           <div className="ed-card" style={{ padding: 22 }}>
             <Banner tone="info">Account created. An administrator will review your request.</Banner>
@@ -65,7 +64,7 @@ export default function RequestAccess() {
               <select className="ed-in" value={orgSlug} onChange={(e) => setOrgSlug(e.target.value)}>
                 <option value="">Select your organization…</option>
                 {orgs.map((o) => (
-                  <option key={o.id} value={o.slug}>{o.name}</option>
+                  <option key={o.id} value={o.slug}>{o.display_name}</option>
                 ))}
               </select>
             </div>
