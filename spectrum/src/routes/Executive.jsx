@@ -6,6 +6,7 @@ import {
 import { signOut } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 import { supabase } from "../lib/supabase.js";
+import { QapiTab, QapiFacilityPanel } from "./Qapi.jsx";
 
 /* ————————————————————— Spectrum design tokens ————————————————————— */
 const T = {
@@ -364,9 +365,11 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
                 {sel.ccn ? "CMS data not loaded yet for this facility." : "No CCN on file — this facility isn't in CMS's nursing-home ratings (likely a rehab hospital or LTAC)."}
               </div>
             )}
-          </div>
+         </div>
         </div>
       </div>
+
+      <QapiFacilityPanel facilityId={sel.facility_id} />
     </>
   );
 }
@@ -572,7 +575,7 @@ export default function Executive() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const { profile } = useAuth();
-  const tabs = ["Overview", "Facilities", "RTA", "Team", "Financials"];
+  const tabs = ["Overview", "Facilities", "RTA", "QAPI", "Team", "Financials"];
 
   useEffect(() => {
     (async () => {
@@ -652,6 +655,7 @@ export default function Executive() {
             {tab === "Overview" && <OverviewTab data={data} month={month} goToFacility={goToFacility} />}
             {tab === "Facilities" && <FacilitiesTab data={data} selectedName={selectedName} setSelectedName={setSelectedName} month={month} />}
             {tab === "RTA" && <RtaTab data={data} month={month} />}
+            {tab === "QAPI" && <QapiTab />}
             {tab === "Team" && <TeamTab data={data} month={month} />}
             {tab === "Financials" && (
               <Empty>Weekly AR and financial tracking will appear here once billing data is loaded. Census, RTA, and facility metrics are live in the other tabs.</Empty>
