@@ -71,6 +71,7 @@ const unitNote = (unit) =>
   : "count";
 
 // Threshold colour. All current metrics are lower_better, but respect direction.
+// Metrics with no amber (tracked but not scored) return neutral ink — no colour.
 const toneFor = (v, m) => {
   if (v == null || !m || m.amber == null) return T.ink;
   const val = Number(v);
@@ -79,6 +80,27 @@ const toneFor = (v, m) => {
   }
   return val >= Number(m.red) ? T.alert : val >= Number(m.amber) ? T.amber : T.teal;
 };
+
+/* Rolling pooled rate over the most recent `n` weeks.
+   Sums numerators and denominators before dividing, so a small building
+   isn't whipsawed between green and red by a single event in one week. */
+const ROLLING_WEEKS = 4;
+
+function rollingRate(rows, weeks, metricKey, unit, n = ROLLING_WEEKS) {
+  if (unit === "count") return { value: null, weeks: 0 };
+  const window = weeks.slice(0, n);
+  let num = 0, den = 0, used = 0;
+  window.forEach((w) => {
+    const r = rows.find((x) => x.week_of === w && x.metric_key === metricKey);
+    if (!r || r.numerator == null || r.denominator == null || r.denom_basis === "missing") return;
+    num += Number(r.numerator);
+    den += Number(r.denominator);
+    used += 1;
+  });
+  if (!used || !den) return { value: null, weeks: used };
+  const value = unit === "percent_of_census" ? (num * 100) / den : (num * 1000) / den;
+  return { value: Math.round(value * 100) / 100, weeks: used, numerator: num, denominator: den };
+}
 
 /* ————————————————————— Shared bits ————————————————————— */
 const SectionLabel = ({ children, right }) => (
@@ -102,11 +124,24 @@ const Note = ({ children, tone = T.amber }) => (
   </div>
 );
 
-const ThresholdFootnote = () => (
-  <p style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 12, lineHeight: 1.5 }}>
-    Amber and red thresholds are provisional and pending clinical review. Read the numbers; treat the colours as a draft.
-  </p>
-);
+/* Footnote is now honest about which thresholds are settled and which aren't. */
+const ThresholdFootnote = ({ metrics = [], scope }) => {
+  const pending = metrics.filter((m) => m.provisional && m.amber != null);
+  return (
+    <p style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 12, lineHeight: 1.5 }}>
+      Colour follows the {ROLLING_WEEKS}-week rate, not a single week — one event in a small building
+      shouldn't flip a rating. Goal is the Spectrum target; national figures are CMS reference data
+      for context only.
+      {pending.length > 0 && (
+        <>
+          {" "}Thresholds for {pending.map((m) => m.label.toLowerCase()).join(", ")}{" "}
+          {pending.length === 1 ? "is" : "are"} still provisional and pending clinical review.
+        </>
+      )}
+      {scope && <> {scope}</>}
+    </p>
+  );
+};
 
 const Th = ({ children, first }) => (
   <th className="text-left py-3" style={{
@@ -121,7 +156,7 @@ function useMetricCatalog() {
   useEffect(() => {
     let alive = true;
     supabase.from("qapi_metrics")
-      .select("id, key, label, section, unit, direction, target, amber, red, sort_order, active, reportable")
+      .select("id, key, label, section, unit, direction, target, amber, red, benchmark_national, benchmark_state, benchmark_state_code, benchmark_source, benchmark_period, provisional, sort_order, active, reportable")
       .eq("active", true)
       .order("sort_order")
       .then(({ data }) => { if (alive) setMetrics(data || []); });
@@ -150,7 +185,7 @@ export function QapiFacilityPanel({ facilityId }) {
     Promise.all([
       supabase.from("facilities").select("id, name, qapi_required, qapi_start_week").eq("id", facilityId).maybeSingle(),
       supabase.from("qapi_weekly")
-        .select("week_of, metric_key, metric_label, unit, direction, numerator, denominator, denom_basis, value, target, amber, red, md_attended, flag_count")
+        .select("week_of, metric_key, metric_label, unit, direction, numerator, denominator, denom_basis, value, target, amber, red, benchmark_national, benchmark_period, md_attended, flag_count")
         .eq("facility_id", facilityId).gte("week_of", since).order("week_of", { ascending: false }),
       supabase.from("qapi_open_flags")
         .select("id, week_of, section, question, answer, owner, days_open")
@@ -183,6 +218,12 @@ export function QapiFacilityPanel({ facilityId }) {
     rows.filter((r) => r.week_of === priorWeek).forEach((r) => { m[r.metric_key] = r; });
     return m;
   }, [rows, priorWeek]);
+
+  const rolling = useMemo(() => {
+    const out = {};
+    reportable.forEach((m) => { out[m.key] = rollingRate(rows, weeks, m.key, m.unit); });
+    return out;
+  }, [rows, weeks, reportable]);
 
   if (!facilityId) return null;
 
@@ -270,10 +311,16 @@ export function QapiFacilityPanel({ facilityId }) {
       </div>
 
       <div className="ed-card" style={{ overflowX: "auto" }}>
-        <table className="w-full" style={{ borderCollapse: "collapse", minWidth: 620 }}>
+        <table className="w-full" style={{ borderCollapse: "collapse", minWidth: 860 }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${T.hairline}`, background: "#F7FAFB" }}>
-              <Th first>Metric</Th><Th>Total</Th><Th>% of census</Th><Th>Target</Th><Th>vs last week</Th>
+              <Th first>Metric</Th>
+              <Th>This week</Th>
+              <Th>Rate</Th>
+              <Th>{ROLLING_WEEKS}-week</Th>
+              <Th>Goal</Th>
+              <Th>National</Th>
+              <Th>vs last week</Th>
             </tr>
           </thead>
           <tbody>
@@ -286,28 +333,62 @@ export function QapiFacilityPanel({ facilityId }) {
               const delta = val != null && pv != null ? val - pv : null;
               const better = delta == null ? null : (m.direction === "higher_better" ? delta > 0 : delta < 0);
               const isCount = m.unit === "count";
+              const roll = rolling[m.key] || { value: null, weeks: 0 };
+              const scored = m.amber != null;
               return (
                 <tr key={m.key} style={{ borderBottom: `1px solid ${T.hairline}` }}>
                   <td className="py-3 pr-4" style={{ paddingLeft: 20 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 600 }}>{m.label}</div>
-                    <div style={{ fontSize: 11, color: T.inkSoft }}>{unitNote(m.unit)}</div>
+                    <div style={{ fontSize: 11, color: T.inkSoft }}>
+                      {unitNote(m.unit)}
+                      {!scored && !isCount && <span style={{ color: T.inkSoft }}> · tracked, not scored</span>}
+                    </div>
                   </td>
+
                   <td className="ed-num py-3 pr-4" style={{ fontSize: 15, fontWeight: 700 }}>
                     {r?.numerator != null ? Number(r.numerator).toLocaleString() : "—"}
                     {r?.numerator != null && r?.denominator != null && (
                       <span style={{ fontSize: 11, fontWeight: 400, color: T.inkSoft }}> of {Number(r.denominator).toLocaleString()}</span>
                     )}
                   </td>
-                  <td className="ed-num py-3 pr-4" style={{ fontSize: 14, fontWeight: 600, color: toneFor(val, m) }}>
+
+                  <td className="ed-num py-3 pr-4" style={{ fontSize: 14, fontWeight: 600, color: T.ink }}>
                     {isCount
                       ? <span style={{ color: T.inkSoft, fontWeight: 400, fontSize: 12 }}>not a rate</span>
                       : missing
                         ? <span style={{ color: T.amber, fontWeight: 500, fontSize: 12 }}>census missing</span>
                         : fmtValue(val, m.unit)}
                   </td>
+
+                  <td className="ed-num py-3 pr-4" style={{ fontSize: 14, fontWeight: 700, color: toneFor(roll.value, m) }}>
+                    {isCount ? <span style={{ color: T.inkSoft, fontWeight: 400, fontSize: 12 }}>—</span>
+                      : roll.value == null ? <span style={{ color: T.inkSoft, fontWeight: 400, fontSize: 12 }}>—</span>
+                      : (
+                        <>
+                          {fmtValue(roll.value, m.unit)}
+                          {roll.weeks < ROLLING_WEEKS && (
+                            <span style={{ fontSize: 10.5, fontWeight: 400, color: T.inkSoft }}> ({roll.weeks}w)</span>
+                          )}
+                        </>
+                      )}
+                  </td>
+
                   <td className="ed-num py-3 pr-4" style={{ fontSize: 12.5, color: T.inkSoft }}>
                     {m.target == null || isCount ? "—" : fmtValue(m.target, m.unit)}
                   </td>
+
+                  <td className="ed-num py-3 pr-4" style={{ fontSize: 12.5, color: T.inkSoft }}
+                      title={m.benchmark_source || undefined}>
+                    {m.benchmark_national == null || isCount ? "—" : (
+                      <>
+                        {fmtValue(m.benchmark_national, m.unit)}
+                        {m.benchmark_period && (
+                          <span style={{ fontSize: 10, color: T.inkSoft }}> · {m.benchmark_period}</span>
+                        )}
+                      </>
+                    )}
+                  </td>
+
                   <td className="ed-num py-3 pr-4" style={{ fontSize: 12.5, color: delta == null ? T.inkSoft : better ? T.teal : T.alert }}>
                     {delta == null ? "—" : `${delta > 0 ? "▲" : delta < 0 ? "▼" : "—"} ${fmtValue(Math.abs(delta), m.unit)}`}
                   </td>
@@ -317,7 +398,7 @@ export function QapiFacilityPanel({ facilityId }) {
           </tbody>
         </table>
       </div>
-      <ThresholdFootnote />
+      <ThresholdFootnote metrics={reportable} />
 
       {flags.length > 0 && (
         <div style={{ marginTop: 24 }}>
@@ -401,7 +482,7 @@ export function QapiTab() {
     let alive = true;
     Promise.all([
       supabase.from("qapi_weekly")
-        .select("facility_id, facility_name, metric_key, unit, direction, numerator, denominator, value, denom_basis, target, amber, red")
+        .select("facility_id, facility_name, metric_key, unit, direction, numerator, denominator, value, denom_basis, target, amber, red, benchmark_national")
         .eq("week_of", week),
       supabase.from("qapi_portfolio_benchmark")
         .select("metric_key, metric_label, unit, facilities_reporting, total_numerator, total_denominator, pooled_value, median_value, best_value, worst_value")
@@ -602,6 +683,14 @@ export function QapiTab() {
                   <ReferenceLine x={Number(benchRow.median_value)} stroke={T.ink} strokeDasharray="4 3"
                     label={{ value: "median", position: "top", fill: T.ink, fontSize: 11 }} />
                 )}
+                {selectedMetric?.target != null && (
+                  <ReferenceLine x={Number(selectedMetric.target)} stroke={T.teal} strokeWidth={1.6} strokeDasharray="6 3"
+                    label={{ value: "goal", position: "bottom", fill: T.teal, fontSize: 11 }} />
+                )}
+                {selectedMetric?.benchmark_national != null && (
+                  <ReferenceLine x={Number(selectedMetric.benchmark_national)} stroke={T.inkSoft} strokeDasharray="2 3"
+                    label={{ value: "national", position: "insideBottomRight", fill: T.inkSoft, fontSize: 11 }} />
+                )}
                 <Bar dataKey="value" name="Value" radius={[0, 4, 4, 0]}>
                   {rankedData.map((d, i) => <Cell key={i} fill={toneFor(d.value, selectedMetric)} />)}
                   <LabelList dataKey="count" position="right" style={{ fontSize: 11, fill: T.inkSoft }}
@@ -623,11 +712,40 @@ export function QapiTab() {
                 value={fmtValue(benchRow.pooled_value, benchRow.unit)}
                 sub={benchRow.total_denominator == null ? "Pooled" : `of ${Number(benchRow.total_denominator).toLocaleString()} residents`}
               />
-              <Kpi label="Median facility" value={fmtValue(benchRow.median_value, benchRow.unit)} sub="Half are above, half below" />
-              <Kpi label="Best / worst" value={`${fmtValue(benchRow.best_value, benchRow.unit)} – ${fmtValue(benchRow.worst_value, benchRow.unit)}`} sub="Range this week" />
+              <Kpi
+                label="Spectrum goal"
+                value={selectedMetric?.target == null ? "Not scored" : fmtValue(selectedMetric.target, selectedMetric.unit)}
+                sub={
+                  selectedMetric?.target == null ? "Tracked for trend only"
+                  : benchRow.pooled_value == null ? "—"
+                  : Number(benchRow.pooled_value) <= Number(selectedMetric.target) ? "Portfolio is at goal" : "Portfolio above goal"
+                }
+                good={selectedMetric?.target != null && benchRow.pooled_value != null && Number(benchRow.pooled_value) <= Number(selectedMetric.target)}
+              />
+              <Kpi
+                label="National"
+                value={selectedMetric?.benchmark_national == null ? "—" : fmtValue(selectedMetric.benchmark_national, selectedMetric.unit)}
+                sub={
+                  selectedMetric?.benchmark_national == null ? "No CMS equivalent"
+                  : `CMS${selectedMetric.benchmark_period ? ` · ${selectedMetric.benchmark_period}` : ""}${selectedMetric.benchmark_state != null ? ` · ${selectedMetric.benchmark_state_code || "State"} ${fmtValue(selectedMetric.benchmark_state, selectedMetric.unit)}` : ""}`
+                }
+                good={
+                  selectedMetric?.benchmark_national != null && benchRow.pooled_value != null
+                    ? Number(benchRow.pooled_value) <= Number(selectedMetric.benchmark_national)
+                    : true
+                }
+              />
             </div>
           )}
-          <ThresholdFootnote />
+          {selectedMetric?.benchmark_source && (
+            <p style={{ fontSize: 11, color: T.inkSoft, marginTop: 10, lineHeight: 1.5 }}>
+              National reference: {selectedMetric.benchmark_source}
+            </p>
+          )}
+          <ThresholdFootnote
+            metrics={selectedMetric ? [selectedMetric] : []}
+            scope="Comparison uses each facility's single-week value; the facility scorecard colours on the 4-week rate."
+          />
         </>
       )}
 
