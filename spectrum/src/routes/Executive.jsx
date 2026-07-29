@@ -146,6 +146,7 @@ const thNum = (v) => (v == null ? null : Number(v));
 function OverviewTab({ data, month, goToFacility }) {
   const { facilities, portfolioTrend, kpis, mixData, hasGrowth, hasLiaison } = data;
   const topOpp = facilities.filter((f) => f.nonSpec != null && f.nonSpec > 5).sort((a, b) => b.nonSpec - a.nonSpec).slice(0, 6);
+  const oppTh = data.thresholds?.["growth.opportunity_pct"];
   return (
     <>
       <section className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -211,10 +212,10 @@ function OverviewTab({ data, month, goToFacility }) {
       {hasGrowth && topOpp.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {topOpp.map((f) => (
-            <button key={f.name} onClick={() => goToFacility(f.name)} className="ed-card p-5 text-left" style={{ cursor: "pointer", borderLeft: `4px solid ${f.opp > 50 ? T.alert : T.amber}` }}>
+            <button key={f.name} onClick={() => goToFacility(f.name)} className="ed-card p-5 text-left" style={{ cursor: "pointer", borderLeft: `4px solid ${toneFrom(f.opp, oppTh)}` }}>
               <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
                 <span style={{ fontSize: 14, fontWeight: 600 }}>{f.name}</span>
-                <span className="ed-num" style={{ fontSize: 12, color: f.opp > 50 ? T.alert : T.amber, fontWeight: 600 }}>{f.opp}%</span>
+                <span className="ed-num" style={{ fontSize: 12, color: toneFrom(f.opp, oppTh), fontWeight: 600 }}>{f.opp}%</span>
               </div>
               <div className="ed-num" style={{ fontSize: 12, color: T.inkSoft }}>{Math.round(f.nonSpec)} of {Math.round(f.building)} not on service</div>
             </button>
@@ -236,6 +237,13 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
   if (!sel) return <Empty>No facility data for {monthLabel(month)}.</Empty>;
   const selTrend = (sel.trendDates || []).map((d, i) => ({ d: shortDay(d), census: sel.trend[i] }));
   const mix = [{ type: "SNF", count: sel.snf ?? 0 }, { type: "LTC", count: sel.ltc ?? 0 }];
+  const th = {
+    nonSpec: data.thresholds?.["growth.non_spectrum"],
+    capture: data.thresholds?.["growth.capture"],
+    opp:     data.thresholds?.["growth.opportunity_pct"],
+    nurseTo: data.thresholds?.["cms.nursing_turnover"],
+    rnTo:    data.thresholds?.["cms.rn_turnover"],
+  };
 
   return (
     <>
