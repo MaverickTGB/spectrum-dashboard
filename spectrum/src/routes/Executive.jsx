@@ -276,8 +276,8 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
                   <td className="py-3 pr-4" style={{ fontSize: 13.5, fontWeight: 600, paddingLeft: 20 }}>{f.name}</td>
                   <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{n1(f.census)}</td>
                   <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{n1(f.building)}</td>
-                  <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: f.nonSpec > 20 ? T.alert : f.nonSpec > 0 ? T.amber : T.ink }}>{f.nonSpec ? Math.round(f.nonSpec) : "—"}</td>
-                  <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: cap == null ? T.inkSoft : cap < 70 ? T.alert : cap < 95 ? T.amber : T.teal, fontWeight: 600 }}>{cap == null ? "—" : cap + "%"}</td>
+                  <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: f.nonSpec == null ? T.ink : toneFrom(f.nonSpec, th.nonSpec) }}>{f.nonSpec ? Math.round(f.nonSpec) : "—"}</td>
+                  <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: cap == null ? T.inkSoft : toneFrom(cap, th.capture), fontWeight: 600 }}>{cap == null ? "—" : cap + "%"}</td>
                   <td className="ed-num py-3 pr-4" style={{ fontSize: 12.5, color: T.inkSoft }}>{n1(f.snf)}</td>
                   <td className="ed-num py-3 pr-4" style={{ fontSize: 12.5, color: T.inkSoft }}>{n1(f.ltc)}</td>
                 </tr>
@@ -289,7 +289,7 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
 
       <div className="flex items-center gap-3" style={{ marginBottom: 14 }}>
         <h2 className="ed-display" style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>{sel.name}</h2>
-        <PulseLine color={sel.opp > 50 ? T.alert : T.teal} />
+        <PulseLine color={toneFrom(sel.opp, th.opp)} />
         <span className="ed-num" style={{ fontSize: 12, color: T.inkSoft }}>avg census {n1(sel.census)}</span>
       </div>
 
@@ -323,7 +323,7 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
             </div>
             <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.inkSoft, marginBottom: 6 }}>Building capture</div>
             <div style={{ height: 8, background: T.hairline, borderRadius: 4, marginBottom: 6 }}>
-              <div style={{ height: 8, width: `${sel.building ? (sel.census / sel.building) * 100 : 100}%`, background: sel.opp > 50 ? T.alert : T.teal, borderRadius: 4 }} />
+              <div style={{ height: 8, width: `${sel.building ? (sel.census / sel.building) * 100 : 100}%`, background: toneFrom(sel.opp, th.opp), borderRadius: 4 }} />
             </div>
             <div className="ed-num" style={{ fontSize: 12, color: T.inkSoft }}>
               {sel.building ? `${n1(sel.census)} of ${n1(sel.building)} building patients on service` : "No building census this month"}
@@ -374,8 +374,8 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
                 <div className="grid grid-cols-2 gap-4" style={{ marginTop: 16 }}>
                   <Stat label="Nurse hrs / resident / day" value={sel.cms.total_nurse_hprd != null ? Number(sel.cms.total_nurse_hprd).toFixed(2) : "—"} />
                   <Stat label="RN hrs / resident / day" value={sel.cms.rn_hprd != null ? Number(sel.cms.rn_hprd).toFixed(2) : "—"} />
-                  <Stat label="Nursing turnover" value={sel.cms.nursing_turnover != null ? sel.cms.nursing_turnover + "%" : "—"} tone={sel.cms.nursing_turnover > 60 ? T.alert : T.ink} />
-                  <Stat label="RN turnover" value={sel.cms.rn_turnover != null ? sel.cms.rn_turnover + "%" : "—"} tone={sel.cms.rn_turnover > 60 ? T.alert : T.ink} />
+                  <Stat label="Nursing turnover" value={sel.cms.nursing_turnover != null ? sel.cms.nursing_turnover + "%" : "—"} tone={toneFrom(sel.cms.nursing_turnover, th.nurseTo)} />
+                  <Stat label="RN turnover" value={sel.cms.rn_turnover != null ? sel.cms.rn_turnover + "%" : "—"} tone={toneFrom(sel.cms.rn_turnover, th.rnTo)} />
                   <Stat label="Certified beds" value={sel.cms.certified_beds ?? "—"} />
                   <Stat label="Fines" value={sel.cms.num_fines ? `${sel.cms.num_fines} · $${Number(sel.cms.total_fine_dollars).toLocaleString()}` : "None"} tone={sel.cms.num_fines ? T.amber : T.ink} />
                 </div>
@@ -396,6 +396,7 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
     </>
   );
 }
+
 
 /* ————————————————————— Tab: RTA ————————————————————— */
 function RtaTab({ data, month }) {
@@ -461,11 +462,13 @@ function TeamTab({ data, month }) {
   const hrs = liaisons.reduce((s, l) => s + (l.hours || 0), 0);
   const ot = liaisons.reduce((s, l) => s + (l.ot || 0), 0);
   const notes = liaisons.reduce((s, l) => s + (l.notes || 0), 0);
+  const otTh = data.thresholds?.["liaison.ot_hours"];
+  const otTotalTh = data.thresholds?.["liaison.ot_total"];
   return (
     <>
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginBottom: 32 }}>
         <Kpi label="Liaison hours" value={n0(hrs)} sub={`${liaisons.length} liaisons`} />
-        <Kpi label="Overtime hours" value={n1(ot)} sub="Month to date" good={ot < 15} />
+        <Kpi label="Overtime hours" value={n1(ot)} sub="Month to date" good={otTotalTh?.amber == null || ot < Number(otTotalTh.amber)} />
         <Kpi label="Notes completed" value={notes} sub="Across the team" />
         <Kpi label="Notes per hour" value={hrs ? (notes / hrs).toFixed(2) : "—"} sub="Team average" />
       </section>
@@ -484,7 +487,7 @@ function TeamTab({ data, month }) {
               <tr key={l.name} style={{ borderBottom: `1px solid ${T.hairline}` }}>
                 <td className="py-3 pr-4" style={{ fontSize: 13.5, fontWeight: 600, paddingLeft: 20 }}>{l.name}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{n1(l.hours)}</td>
-                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: l.ot > 5 ? T.alert : l.ot > 0 ? T.amber : T.ink }}>{l.ot ? n1(l.ot) : "—"}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: l.ot ? toneFrom(l.ot, otTh) : T.ink }}>{l.ot ? n1(l.ot) : "—"}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{l.notes || "—"}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{l.hours ? (l.notes / l.hours).toFixed(2) : "—"}</td>
               </tr>
@@ -495,6 +498,7 @@ function TeamTab({ data, month }) {
     </>
   );
 }
+
 
 /* ————————————————————— Data loading ————————————————————— */
 function lastDayOfMonth(ym) {
