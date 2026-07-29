@@ -289,7 +289,7 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
 
       <div className="flex items-center gap-3" style={{ marginBottom: 14 }}>
         <h2 className="ed-display" style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>{sel.name}</h2>
-        <PulseLine color={toneFrom(sel.opp, th.opp)} />
+        <PulseLine color={sel.opp == null ? T.teal : toneFrom(sel.opp, th.opp)} />
         <span className="ed-num" style={{ fontSize: 12, color: T.inkSoft }}>avg census {n1(sel.census)}</span>
       </div>
 
@@ -323,7 +323,7 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
             </div>
             <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.inkSoft, marginBottom: 6 }}>Building capture</div>
             <div style={{ height: 8, background: T.hairline, borderRadius: 4, marginBottom: 6 }}>
-              <div style={{ height: 8, width: `${sel.building ? (sel.census / sel.building) * 100 : 100}%`, background: toneFrom(sel.opp, th.opp), borderRadius: 4 }} />
+              <div style={{ height: 8, width: `${sel.building ? (sel.census / sel.building) * 100 : 100}%`, background: sel.opp == null ? T.teal : toneFrom(sel.opp, th.opp), borderRadius: 4 }} />
             </div>
             <div className="ed-num" style={{ fontSize: 12, color: T.inkSoft }}>
               {sel.building ? `${n1(sel.census)} of ${n1(sel.building)} building patients on service` : "No building census this month"}
