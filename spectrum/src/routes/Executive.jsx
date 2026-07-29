@@ -133,6 +133,14 @@ const Stat = ({ label, value, tone }) => (
   </div>
 );
 const fmtDate = (iso) => { if (!iso) return "—"; const d = new Date(iso); return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); };
+// Colour a value against a metric_thresholds row. No row, or no amber -> neutral.
+const toneFrom = (v, th) => {
+  if (v == null || !th || th.amber == null) return T.ink;
+  const val = Number(v);
+  if (th.direction === "higher_better") return val <= Number(th.red) ? T.alert : val <= Number(th.amber) ? T.amber : T.teal;
+  return val >= Number(th.red) ? T.alert : val >= Number(th.amber) ? T.amber : T.teal;
+};
+const thNum = (v) => (v == null ? null : Number(v));
 
 /* ————————————————————— Tab: Overview ————————————————————— */
 function OverviewTab({ data, month, goToFacility }) {
@@ -324,12 +332,19 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
             {sel.rta ? (
               <>
                 <div className="grid grid-cols-2 gap-4" style={{ marginBottom: 16 }}>
-                  <Stat label="SNF RTA rate" value={sel.rta.snfRate == null ? "—" : sel.rta.snfRate.toFixed(1) + "%"} tone={sel.rta.snfRate > 20 ? T.alert : sel.rta.snfRate > 12 ? T.amber : T.teal} />
-                  <Stat label="LTC RTA rate" value={sel.rta.ltcRate == null ? "—" : sel.rta.ltcRate.toFixed(1) + "%"} tone={sel.rta.ltcRate > 20 ? T.alert : sel.rta.ltcRate > 12 ? T.amber : T.teal} />
+                  <Stat label="SNF RTA rate" value={sel.rta.snfRate == null ? "—" : sel.rta.snfRate.toFixed(1) + "%"} tone={toneFrom(sel.rta.snfRate, data.thresholds?.["rta.snf"])} />
+                  <Stat label="LTC RTA rate" value={sel.rta.ltcRate == null ? "—" : sel.rta.ltcRate.toFixed(1) + "%"} tone={toneFrom(sel.rta.ltcRate, data.thresholds?.["rta.ltc_pct"])} />
                   <Stat label="SNF admits / RTA" value={`${sel.rta.admits ?? "—"} / ${sel.rta.rtas ?? "—"}`} />
                   <Stat label="LTC admits / RTA" value={`${sel.rta.ltc_admits ?? "—"} / ${sel.rta.ltc_rtas ?? "—"}`} />
                   <Stat label="ER visits" value={sel.rta.er ?? "—"} />
                 </div>
+                {data.thresholds?.["rta.snf"] && (
+                  <p style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 4, lineHeight: 1.5 }}>
+                    Spectrum goal {thNum(data.thresholds["rta.snf"].target)}% · national {thNum(data.thresholds["rta.snf"].benchmark_national)}%
+                    {data.thresholds["rta.snf"].benchmark_state != null && ` · ${data.thresholds["rta.snf"].benchmark_state_code || "State"} ${thNum(data.thresholds["rta.snf"].benchmark_state)}%`}
+                    {data.thresholds["rta.snf"].benchmark_period && ` (CMS ${data.thresholds["rta.snf"].benchmark_period})`}
+                  </p>
+                )}
               </>
             ) : <div style={{ color: T.inkSoft, fontSize: 13 }}>No return-to-acute data for {monthLabel(month)}.</div>}
           </div>
@@ -385,13 +400,15 @@ function RtaTab({ data, month }) {
   }), { admits: 0, rtas: 0, ltc_admits: 0, ltc_rtas: 0, er: 0 });
   const snfRate = tot.admits ? ((tot.rtas / tot.admits) * 100).toFixed(1) : "—";
   const ltcRate = tot.ltc_admits ? ((tot.ltc_rtas / tot.ltc_admits) * 100).toFixed(1) : "—";
-  const rateColor = (r) => (r == null ? T.inkSoft : r > 20 ? T.alert : r > 12 ? T.amber : T.teal);
+const snfTh = data.thresholds?.["rta.snf"];
+  const ltcTh = data.thresholds?.["rta.ltc_pct"];
+  const rateColor = (r, th) => (r == null ? T.inkSoft : toneFrom(r, th));
 
   return (
     <>
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginBottom: 32 }}>
-        <Kpi label="SNF RTA rate" value={`${snfRate}%`} sub={`${tot.rtas} of ${tot.admits} SNF admits`} good={snfRate === "—" || +snfRate <= 15} />
-        <Kpi label="LTC RTA rate" value={`${ltcRate}%`} sub={`${tot.ltc_rtas} of ${tot.ltc_admits} LTC admits`} good={ltcRate === "—" || +ltcRate <= 15} />
+        <Kpi label="SNF RTA rate" value={`${snfRate}%`} sub={`${tot.rtas} of ${tot.admits} SNF admits`} good={snfRate === "—" || (snfTh?.target != null && +snfRate <= Number(snfTh.target))} />
+        <Kpi label="LTC RTA rate" value={`${ltcRate}%`} sub={`${tot.ltc_rtas} of ${tot.ltc_admits} LTC admits`} good={ltcTh?.target != null ? (ltcRate === "—" || +ltcRate <= Number(ltcTh.target)) : true} />
         <Kpi label="Total admissions" value={n0(tot.admits + tot.ltc_admits)} sub="SNF + LTC" />
         <Kpi label="ER visits" value={n0(tot.er)} sub="Across portfolio" good={false} />
       </section>
@@ -412,10 +429,10 @@ function RtaTab({ data, month }) {
                 <td className="py-3 pr-4" style={{ fontSize: 13.5, fontWeight: 600, paddingLeft: 20 }}>{r.name}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{r.admits ?? "—"}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{r.rtas ?? "—"}</td>
-                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, fontWeight: 600, color: rateColor(r.snfRate) }}>{r.snfRate == null ? "—" : r.snfRate.toFixed(1) + "%"}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, fontWeight: 600, color: rateColor(r.snfRate, snfTh) }}>{r.snfRate == null ? "—" : r.snfRate.toFixed(1) + "%"}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{r.ltc_admits ?? "—"}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{r.ltc_rtas ?? "—"}</td>
-                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, fontWeight: 600, color: rateColor(r.ltcRate) }}>{r.ltcRate == null ? "—" : r.ltcRate.toFixed(1) + "%"}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, fontWeight: 600, color: rateColor(r.ltcRate, ltcTh) }}>{r.ltcRate == null ? "—" : r.ltcRate.toFixed(1) + "%"}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{r.er ?? "—"}</td>
               </tr>
             ))}
@@ -423,7 +440,7 @@ function RtaTab({ data, month }) {
         </table>
       </div>
       <p style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 12 }}>
-        RTA rate = returns to acute ÷ admissions. Amber above 12%, red above 20% — adjust these thresholds to your benchmark anytime.
+        RTA rate = returns to acute ÷ admissions. Spectrum goal {thNum(snfTh?.target) ?? "—"}%, amber above that, red above the national average of {thNum(snfTh?.benchmark_national) ?? "—"}% (CMS {snfTh?.benchmark_period || "—"}; Oklahoma {thNum(snfTh?.benchmark_state) ?? "—"}%). LTC has no percentage benchmark yet, so it stays uncoloured. Thresholds live in the metric_thresholds table — change them with SQL, no deploy.
       </p>
     </>
   );
@@ -481,16 +498,17 @@ async function loadMonthData(monthIso) {
   const ym = ymKey(monthIso);          // normalize 2026-06-01 -> 2026-06
   const start = `${ym}-01`;
   const end = lastDayOfMonth(ym);
-  const [facs, fm, fg, rta, dc, lm, cms] = await Promise.all([
+  const [facs, fm, fg, rta, dc, lm, cms, th] = await Promise.all([
     supabase.from("facilities").select("id, name, code, ccn"),
     supabase.from("facility_monthly").select("facility_id, avg_spectrum_census, avg_snf, avg_ltc").eq("month", start),
     supabase.from("facility_growth").select("facility_id, avg_building_census, avg_non_spectrum").eq("month", start),
     supabase.from("rta_monthly").select("facility_id, admits, rtas, ltc_admits, ltc_rtas, er_visits").eq("month", start),
     supabase.from("daily_census").select("facility_id, census_date, spectrum_census").gte("census_date", start).lte("census_date", end),
     supabase.from("liaison_monthly").select("hours, ot_hours, notes_count, liaisons(name)").eq("month", start),
-    supabase.from("facility_cms").select("*"),
+supabase.from("facility_cms").select("*"),
+    supabase.from("metric_thresholds").select("metric_key, label, unit, direction, target, amber, red, benchmark_national, benchmark_state, benchmark_state_code, benchmark_period, benchmark_source, provisional").eq("active", true),
   ]);
-  const err = facs.error || fm.error || fg.error || rta.error || dc.error || lm.error || cms.error;
+  const err = facs.error || fm.error || fg.error || rta.error || dc.error || lm.error || cms.error || th.error;
   if (err) throw err;
 
   const cmsById = {}; (cms.data || []).forEach((c) => { cmsById[c.facility_id] = c; });
@@ -560,6 +578,7 @@ async function loadMonthData(monthIso) {
 
   return {
     facilities, portfolioTrend, rta: rtaRows, liaisons, hasGrowth, hasLiaison,
+    thresholds: Object.fromEntries((th.data || []).map((t) => [t.metric_key, t])),
     mixData: [{ type: "SNF", count: Math.round(totalSnf) }, { type: "LTC", count: Math.round(totalLtc) }],
     kpis: { totalCensus, totalBuilding, totalOpportunity, captureRate, liaisonNotes, liaisonHrs },
   };
