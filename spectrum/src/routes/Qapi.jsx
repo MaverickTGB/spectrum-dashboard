@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  Cell, ReferenceLine,
+  Cell, ReferenceLine, LabelList,
 } from "recharts";
 import { supabase } from "../lib/supabase.js";
 import { useAuth } from "../lib/auth.jsx";
@@ -232,6 +232,7 @@ export function QapiFacilityPanel({ facilityId }) {
   }
 
   const head = rows.find((r) => r.week_of === latestWeek) || {};
+  const census = rows.find((r) => r.week_of === latestWeek && r.denominator != null)?.denominator ?? null;
   const stale = latestWeek < addWeeks(thisMonday(), -1);
 
   return wrap(
@@ -243,6 +244,12 @@ export function QapiFacilityPanel({ facilityId }) {
             <div className="ed-display" style={{ fontSize: 20, fontWeight: 800 }}>{weekLabel(latestWeek)}</div>
           </div>
           <div className="flex items-center gap-6">
+            <div>
+              <div style={{ fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: T.inkSoft, marginBottom: 4 }}>Facility census</div>
+              <div className="ed-num" style={{ fontSize: 14, fontWeight: 600, color: census == null ? T.amber : T.ink }}>
+                {census == null ? "Not reported" : Number(census).toLocaleString()}
+              </div>
+            </div>
             <div>
               <div style={{ fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: T.inkSoft, marginBottom: 4 }}>Medical director</div>
               <div className="ed-num" style={{ fontSize: 14, fontWeight: 600, color: head.md_attended ? T.teal : T.amber }}>
@@ -266,7 +273,7 @@ export function QapiFacilityPanel({ facilityId }) {
         <table className="w-full" style={{ borderCollapse: "collapse", minWidth: 620 }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${T.hairline}`, background: "#F7FAFB" }}>
-              <Th first>Metric</Th><Th>Count</Th><Th>Rate</Th><Th>Target</Th><Th>vs last week</Th>
+              <Th first>Metric</Th><Th>Total</Th><Th>% of census</Th><Th>Target</Th><Th>vs last week</Th>
             </tr>
           </thead>
           <tbody>
@@ -278,22 +285,28 @@ export function QapiFacilityPanel({ facilityId }) {
               const pv = p && p.denom_basis !== "missing" && p.value != null ? Number(p.value) : null;
               const delta = val != null && pv != null ? val - pv : null;
               const better = delta == null ? null : (m.direction === "higher_better" ? delta > 0 : delta < 0);
+              const isCount = m.unit === "count";
               return (
                 <tr key={m.key} style={{ borderBottom: `1px solid ${T.hairline}` }}>
                   <td className="py-3 pr-4" style={{ paddingLeft: 20 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 600 }}>{m.label}</div>
                     <div style={{ fontSize: 11, color: T.inkSoft }}>{unitNote(m.unit)}</div>
                   </td>
-                  <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>
+                  <td className="ed-num py-3 pr-4" style={{ fontSize: 15, fontWeight: 700 }}>
                     {r?.numerator != null ? Number(r.numerator).toLocaleString() : "—"}
+                    {r?.numerator != null && r?.denominator != null && (
+                      <span style={{ fontSize: 11, fontWeight: 400, color: T.inkSoft }}> of {Number(r.denominator).toLocaleString()}</span>
+                    )}
                   </td>
                   <td className="ed-num py-3 pr-4" style={{ fontSize: 14, fontWeight: 600, color: toneFor(val, m) }}>
-                    {missing
-                      ? <span style={{ color: T.amber, fontWeight: 500, fontSize: 12 }}>census missing</span>
-                      : fmtValue(val, m.unit)}
+                    {isCount
+                      ? <span style={{ color: T.inkSoft, fontWeight: 400, fontSize: 12 }}>not a rate</span>
+                      : missing
+                        ? <span style={{ color: T.amber, fontWeight: 500, fontSize: 12 }}>census missing</span>
+                        : fmtValue(val, m.unit)}
                   </td>
                   <td className="ed-num py-3 pr-4" style={{ fontSize: 12.5, color: T.inkSoft }}>
-                    {m.target == null ? "—" : fmtValue(m.target, m.unit)}
+                    {m.target == null || isCount ? "—" : fmtValue(m.target, m.unit)}
                   </td>
                   <td className="ed-num py-3 pr-4" style={{ fontSize: 12.5, color: delta == null ? T.inkSoft : better ? T.teal : T.alert }}>
                     {delta == null ? "—" : `${delta > 0 ? "▲" : delta < 0 ? "▼" : "—"} ${fmtValue(Math.abs(delta), m.unit)}`}
@@ -388,10 +401,10 @@ export function QapiTab() {
     let alive = true;
     Promise.all([
       supabase.from("qapi_weekly")
-        .select("facility_id, facility_name, metric_key, unit, direction, value, denom_basis, target, amber, red")
+        .select("facility_id, facility_name, metric_key, unit, direction, numerator, denominator, value, denom_basis, target, amber, red")
         .eq("week_of", week),
       supabase.from("qapi_portfolio_benchmark")
-        .select("metric_key, metric_label, unit, facilities_reporting, pooled_value, median_value, best_value, worst_value")
+        .select("metric_key, metric_label, unit, facilities_reporting, total_numerator, total_denominator, pooled_value, median_value, best_value, worst_value")
         .eq("week_of", week),
     ]).then(([w, b]) => {
       if (!alive) return;
@@ -441,7 +454,12 @@ export function QapiTab() {
     if (!selectedMetric) return [];
     return weekRows
       .filter((r) => r.metric_key === metricKey && r.value != null && r.denom_basis !== "missing")
-      .map((r) => ({ name: r.facility_name, value: Number(r.value) }))
+      .map((r) => ({
+        name: r.facility_name,
+        value: Number(r.value),
+        count: r.numerator == null ? null : Number(r.numerator),
+        census: r.denominator == null ? null : Number(r.denominator),
+      }))
       .sort((a, b) => (selectedMetric.direction === "higher_better" ? a.value - b.value : b.value - a.value));
   }, [weekRows, metricKey, selectedMetric]);
 
@@ -558,7 +576,7 @@ export function QapiTab() {
         <>
           <div className="ed-card p-4" style={{ height: Math.max(260, rankedData.length * 26 + 60) }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={rankedData} layout="vertical" margin={{ top: 8, right: 24, bottom: 0, left: 8 }}>
+              <BarChart data={rankedData} layout="vertical" margin={{ top: 8, right: 44, bottom: 0, left: 8 }}>
                 <CartesianGrid stroke={T.hairline} horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={{ stroke: T.hairline }} tickLine={false} />
                 <YAxis type="category" dataKey="name" width={168} tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={false} tickLine={false} />
@@ -566,10 +584,16 @@ export function QapiTab() {
                   cursor={{ fill: T.tealSoft }}
                   content={({ active, payload, label }) => {
                     if (!active || !payload?.length) return null;
+                    const d = payload[0].payload;
                     return (
                       <div className="ed-ui" style={{ background: T.ink, color: "#fff", padding: "8px 12px", fontSize: 12, borderRadius: 6 }}>
-                        <div style={{ opacity: 0.7, marginBottom: 2 }}>{label}</div>
-                        <div className="ed-num">{fmtValue(payload[0].value, selectedMetric?.unit)} {unitNote(selectedMetric?.unit)}</div>
+                        <div style={{ opacity: 0.7, marginBottom: 3 }}>{label}</div>
+                        <div className="ed-num" style={{ fontSize: 14, fontWeight: 600 }}>{fmtValue(d.value, selectedMetric?.unit)}</div>
+                        {d.count != null && (
+                          <div className="ed-num" style={{ opacity: 0.75, marginTop: 2 }}>
+                            {d.count.toLocaleString()}{d.census != null ? ` of ${d.census.toLocaleString()} residents` : ""}
+                          </div>
+                        )}
                       </div>
                     );
                   }}
@@ -580,16 +604,27 @@ export function QapiTab() {
                 )}
                 <Bar dataKey="value" name="Value" radius={[0, 4, 4, 0]}>
                   {rankedData.map((d, i) => <Cell key={i} fill={toneFor(d.value, selectedMetric)} />)}
+                  <LabelList dataKey="count" position="right" style={{ fontSize: 11, fill: T.inkSoft }}
+                    formatter={(v) => (v == null ? "" : `${v}`)} />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
           {benchRow && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginTop: 16 }}>
-              <Kpi label="Portfolio pooled" value={fmtValue(benchRow.pooled_value, benchRow.unit)} sub="Recomputed from totals" />
-              <Kpi label="Median facility" value={fmtValue(benchRow.median_value, benchRow.unit)} sub={`${benchRow.facilities_reporting} reporting`} />
-              <Kpi label="Best" value={fmtValue(benchRow.best_value, benchRow.unit)} sub="Lowest this week" />
-              <Kpi label="Worst" value={fmtValue(benchRow.worst_value, benchRow.unit)} sub="Highest this week" good={false} />
+              <Kpi
+                label={`Total ${(selectedMetric?.label || "").toLowerCase()}`}
+                value={benchRow.total_numerator == null ? "—" : Number(benchRow.total_numerator).toLocaleString()}
+                sub={`Across ${benchRow.facilities_reporting} facilities`}
+                good={false}
+              />
+              <Kpi
+                label="Portfolio rate"
+                value={fmtValue(benchRow.pooled_value, benchRow.unit)}
+                sub={benchRow.total_denominator == null ? "Pooled" : `of ${Number(benchRow.total_denominator).toLocaleString()} residents`}
+              />
+              <Kpi label="Median facility" value={fmtValue(benchRow.median_value, benchRow.unit)} sub="Half are above, half below" />
+              <Kpi label="Best / worst" value={`${fmtValue(benchRow.best_value, benchRow.unit)} – ${fmtValue(benchRow.worst_value, benchRow.unit)}`} sub="Range this week" />
             </div>
           )}
           <ThresholdFootnote />
