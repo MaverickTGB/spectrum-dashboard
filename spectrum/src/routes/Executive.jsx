@@ -148,14 +148,15 @@ function OverviewTab({ data, month, goToFacility }) {
   const { facilities, portfolioTrend, kpis, mixData, hasGrowth, hasLiaison } = data;
   const topOpp = facilities.filter((f) => f.nonSpec != null && f.nonSpec > 5).sort((a, b) => b.nonSpec - a.nonSpec).slice(0, 6);
   const oppTh = data.thresholds?.["growth.opportunity_pct"];
+  const { scoped } = useScope();
   return (
     <>
-      <section className="grid grid-cols-2 md:grid-cols-5 gap-4">
+     <section className={`grid grid-cols-2 ${scoped ? "md:grid-cols-4" : "md:grid-cols-5"} gap-4`}>
         <Kpi label="Avg daily census" value={n0(kpis.totalCensus)} sub={`${facilities.length} facilities · Spectrum patients`} />
         <Kpi label="Building census" value={n0(kpis.totalBuilding)} sub={hasGrowth ? "Total patients in buildings" : "No building data this month"} good={hasGrowth} />
         <Kpi label="Capture rate" value={kpis.captureRate == null ? "—" : `${kpis.captureRate}%`} sub={hasGrowth ? "Spectrum share of buildings" : "Needs building data"} good={hasGrowth} />
         <Kpi label="Growth opportunity" value={n0(kpis.totalOpportunity)} sub={hasGrowth ? "Non-Spectrum patients" : "Needs building data"} good={false} />
-        <Kpi label="Liaison notes" value={hasLiaison ? kpis.liaisonNotes : "—"} sub={hasLiaison ? `${n0(kpis.liaisonHrs)} hrs worked` : "No liaison data this month"} good={hasLiaison} />
+     {!scoped && <Kpi label="Liaison notes" value={hasLiaison ? kpis.liaisonNotes : "—"} sub={hasLiaison ? `${n0(kpis.liaisonHrs)} hrs worked` : "No liaison data this month"} good={hasLiaison} />}
       </section>
 
       {hasGrowth && topOpp.length > 0 ? (
