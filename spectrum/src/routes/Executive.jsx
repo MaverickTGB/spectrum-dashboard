@@ -7,6 +7,7 @@ import { signOut } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 import { supabase } from "../lib/supabase.js";
 import { QapiTab, QapiFacilityPanel } from "./Qapi.jsx";
+import { ScopeProvider, ScopeSelector, ScopeBanner, useScope, applyScope } from "../lib/scope.jsx";
 
 /* ————————————————————— Spectrum design tokens ————————————————————— */
 const T = {
@@ -511,7 +512,7 @@ async function loadMonthData(monthIso) {
   const start = `${ym}-01`;
   const end = lastDayOfMonth(ym);
   const [facs, fm, fg, rta, dc, lm, cms, th] = await Promise.all([
-    supabase.from("facilities").select("id, name, code, ccn"),
+    supabase.from("facilities").select("id, name, code, ccn, org_id"),
     supabase.from("facility_monthly").select("facility_id, avg_spectrum_census, avg_snf, avg_ltc").eq("month", start),
     supabase.from("facility_growth").select("facility_id, avg_building_census, avg_non_spectrum").eq("month", start),
     supabase.from("rta_monthly").select("facility_id, admits, rtas, ltc_admits, ltc_rtas, er_visits").eq("month", start),
@@ -554,7 +555,8 @@ supabase.from("facility_cms").select("*"),
   Object.values(byId).forEach((o) => {
     if (o.nonSpec == null && o.building != null && o.census != null) o.nonSpec = Math.max(o.building - o.census, 0);
     o.opp = o.building && o.building > 0 && o.nonSpec != null ? Math.round((o.nonSpec / o.building) * 100) : null;
-    o.ccn = facById[o.facility_id]?.ccn || null;
+   o.ccn = facById[o.facility_id]?.ccn || null;
+    o.org_id = facById[o.facility_id]?.org_id ?? null;
     o.cms = cmsById[o.facility_id] || null;
     const rr = rtaById[o.facility_id];
     o.rta = rr ? {
@@ -598,15 +600,24 @@ supabase.from("facility_cms").select("*"),
 
 /* ————————————————————— App shell ————————————————————— */
 export default function Executive() {
+  return <ScopeProvider><ExecutiveInner /></ScopeProvider>;
+}
+
+function ExecutiveInner() {
   const [tab, setTab] = useState("Overview");
   const [selectedName, setSelectedName] = useState(null);
   const [months, setMonths] = useState([]);
   const [month, setMonth] = useState(null);
-  const [data, setData] = useState(null);
+  const [rawData, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const { profile } = useAuth();
-  const tabs = ["Overview", "Facilities", "RTA", "QAPI", "Team", "Financials"];
+  const { orgId, scoped } = useScope();
+  const data = useMemo(() => applyScope(rawData, orgId), [rawData, orgId]);
+  const tabs = scoped
+    ? ["Overview", "Facilities", "RTA", "QAPI"]
+    : ["Overview", "Facilities", "RTA", "QAPI", "Team", "Financials"];
+  useEffect(() => { if (!tabs.includes(tab)) setTab("Overview"); }, [scoped]);
 
   useEffect(() => {
     (async () => {
@@ -648,7 +659,8 @@ export default function Executive() {
               </h1>
             </div>
           </div>
-          <nav className="flex items-center gap-2" aria-label="Dashboard sections">
+        <nav className="flex items-center gap-2" aria-label="Dashboard sections">
+            <ScopeSelector />
             {months.length > 0 && (
               <select value={month || ""} onChange={(e) => setMonth(e.target.value)} className="ed-ui" style={{
                 fontSize: 13, padding: "9px 14px", borderRadius: 99, border: `1px solid ${T.hairline}`,
@@ -675,7 +687,9 @@ export default function Executive() {
             }}>Sign out</button>
           </nav>
         </div>
-      </header>
+  </header>
+
+      <ScopeBanner />
 
       <main className="mx-auto px-6 pb-14 pt-8" style={{ maxWidth: 1280 }}>
         {loading && <div style={{ color: T.inkSoft, fontSize: 14, padding: "40px 0" }}>Loading {month ? monthLabel(month) : ""}…</div>}
