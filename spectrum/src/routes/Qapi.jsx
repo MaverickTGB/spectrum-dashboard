@@ -5,6 +5,7 @@ import {
 } from "recharts";
 import { supabase } from "../lib/supabase.js";
 import { useAuth } from "../lib/auth.jsx";
+import { useScope } from "../lib/scope.jsx";
 
 /* ————————————————————— Tokens (mirrors Executive.jsx) ————————————————————— */
 const T = {
@@ -435,7 +436,24 @@ const MIN_FOR_BENCHMARK = 5;
 export function QapiTab() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "admin";
+  const { orgId, scoped, orgName } = useScope();
   const { reportable, byKey } = useMetricCatalog();
+
+  // facility -> org lookup, so the client view can narrow rows that only
+  // carry a facility name (open flags) as well as ones that carry ids.
+  const [facOrg, setFacOrg] = useState({ byId: {}, byName: {} });
+  useEffect(() => {
+    let alive = true;
+    supabase.from("facilities").select("id, name, org_id").then(({ data }) => {
+      if (!alive) return;
+      const byId = {}, byName = {};
+      (data || []).forEach((f) => { byId[f.id] = f.org_id; byName[f.name] = f.org_id; });
+      setFacOrg({ byId, byName });
+    });
+    return () => { alive = false; };
+  }, []);
+  const inScopeId = (id) => !scoped || facOrg.byId[id] === orgId;
+  const inScopeName = (nm) => !scoped || facOrg.byName[nm] === orgId;
 
   const [status, setStatus] = useState([]);
   const [flags, setFlags] = useState([]);
@@ -499,19 +517,22 @@ export function QapiTab() {
     if (!metricKey && reportable.length) setMetricKey(reportable[0].key);
   }, [reportable, metricKey]);
 
-  const weeks = useMemo(() => [...new Set(status.map((r) => r.week_of))].sort().reverse(), [status]);
+  const weeks = useMemo(() => [...new Set(scopedStatus.map((r) => r.week_of))].sort().reverse(), [scopedStatus]);
   const gridWeeks = useMemo(() => weeks.slice(0, 6), [weeks]);
+
+  const scopedStatus = useMemo(() => status.filter((r) => inScopeId(r.facility_id)), [status, facOrg, orgId, scoped]);
+  const scopedFlags = useMemo(() => flags.filter((g) => inScopeName(g.facility_name)), [flags, facOrg, orgId, scoped]);
 
   const facilitiesInGrid = useMemo(() => {
     const m = new Map();
-    status.forEach((r) => {
+    scopedStatus.forEach((r) => {
       if (!m.has(r.facility_id)) m.set(r.facility_id, { id: r.facility_id, name: r.facility_name, code: r.facility_code, byWeek: {} });
       m.get(r.facility_id).byWeek[r.week_of] = r;
     });
     return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [status]);
+  }, [scopedStatus]);
 
-  const thisWeekRows = useMemo(() => status.filter((r) => r.week_of === week), [status, week]);
+  const thisWeekRows = useMemo(() => scopedStatus.filter((r) => r.week_of === week), [scopedStatus, week]);
   const submittedCount = thisWeekRows.filter((r) => r.submitted).length;
   const dueCount = thisWeekRows.length;
   const mdCount = thisWeekRows.filter((r) => r.submitted && r.md_attended).length;
@@ -519,6 +540,7 @@ export function QapiTab() {
   const redFacilities = useMemo(() => {
     const bad = new Set();
     weekRows.forEach((r) => {
+      if (!inScopeId(r.facility_id)) return;
       const m = byKey[r.metric_key];
       if (!m || !m.reportable || r.value == null || r.denom_basis === "missing" || m.red == null) return;
       const val = Number(r.value);
@@ -526,7 +548,7 @@ export function QapiTab() {
       if (isRed) bad.add(r.facility_id);
     });
     return bad.size;
-  }, [weekRows, byKey]);
+  }, [weekRows, byKey, facOrg, orgId, scoped]);
 
   const selectedMetric = metricKey ? byKey[metricKey] : null;
   const benchRow = bench.find((b) => b.metric_key === metricKey) || null;
@@ -534,7 +556,7 @@ export function QapiTab() {
   const rankedData = useMemo(() => {
     if (!selectedMetric) return [];
     return weekRows
-      .filter((r) => r.metric_key === metricKey && r.value != null && r.denom_basis !== "missing")
+      .filter((r) => r.metric_key === metricKey && r.value != null && r.denom_basis !== "missing" && inScopeId(r.facility_id))
       .map((r) => ({
         name: r.facility_name,
         value: Number(r.value),
@@ -542,7 +564,18 @@ export function QapiTab() {
         census: r.denominator == null ? null : Number(r.denominator),
       }))
       .sort((a, b) => (selectedMetric.direction === "higher_better" ? a.value - b.value : b.value - a.value));
-  }, [weekRows, metricKey, selectedMetric]);
+  }, [weekRows, metricKey, selectedMetric, facOrg, orgId, scoped]);
+
+  // Pooled numbers for just this client's buildings, so the KPI strip doesn't
+  // quote portfolio-wide totals to someone who can only see three facilities.
+  const clientAgg = useMemo(() => {
+    if (!rankedData.length) return null;
+    const num = rankedData.reduce((s2, d) => s2 + (d.count || 0), 0);
+    const den = rankedData.reduce((s2, d) => s2 + (d.census || 0), 0);
+    if (!den) return { num, den: null, value: null };
+    const v = selectedMetric?.unit === "percent_of_census" ? (num * 100) / den : (num * 1000) / den;
+    return { num, den, value: Math.round(v * 100) / 100 };
+  }, [rankedData, selectedMetric]);
 
   if (loading) return <div style={{ color: T.inkSoft, fontSize: 14, padding: "40px 0" }}>Loading QAPI…</div>;
   if (err) return <Note tone={T.alert}>Couldn't load QAPI data: {err}</Note>;
@@ -585,7 +618,7 @@ export function QapiTab() {
           sub={dueCount ? `${Math.round((submittedCount / dueCount) * 100)}% of facilities due` : "None due"}
           good={dueCount > 0 && submittedCount === dueCount}
         />
-        <Kpi label="Open items" value={flags.length} sub={flags.length ? `Oldest ${flags[0].days_open} days` : "Nothing outstanding"} good={flags.length === 0} />
+        <Kpi label="Open items" value={scopedFlags.length} sub={scopedFlags.length ? `Oldest ${scopedFlags[0].days_open} days` : "Nothing outstanding"} good={scopedFlags.length === 0} />
         <Kpi label="Medical director present" value={submittedCount ? `${mdCount} / ${submittedCount}` : "—"} sub="Of submitted reviews" good={submittedCount > 0 && mdCount === submittedCount} />
         <Kpi label="Facilities in red" value={redFacilities} sub="On at least one metric" good={redFacilities === 0} />
       </section>
@@ -603,7 +636,7 @@ export function QapiTab() {
           </thead>
           <tbody>
             {facilitiesInGrid.map((f) => {
-              const openHere = flags.filter((g) => g.facility_name === f.name).length;
+              const openHere = scopedFlags.filter((g) => g.facility_name === f.name).length;
               return (
                 <tr key={f.id} style={{ borderBottom: `1px solid ${T.hairline}` }}>
                   <td className="py-3 pr-4" style={{ fontSize: 13.5, fontWeight: 600, paddingLeft: 20 }}>
@@ -647,9 +680,9 @@ export function QapiTab() {
         ))}
       </div>
 
-      {rankedData.length < MIN_FOR_BENCHMARK ? (
+      {rankedData.length < (scoped ? 1 : MIN_FOR_BENCHMARK) ? (
         <Note>
-          Comparison needs at least {MIN_FOR_BENCHMARK} facilities reporting this metric —
+          Comparison needs at least {scoped ? 1 : MIN_FOR_BENCHMARK} facilities reporting this metric —
           {" "}{rankedData.length} {rankedData.length === 1 ? "has" : "have"} so far for {weekLabel(week).toLowerCase()}.
           A median across fewer buildings than that would be noise, not a benchmark.
         </Note>
@@ -681,7 +714,7 @@ export function QapiTab() {
                 />
                 {benchRow?.median_value != null && (
                   <ReferenceLine x={Number(benchRow.median_value)} stroke={T.ink} strokeDasharray="4 3"
-                    label={{ value: "median", position: "top", fill: T.ink, fontSize: 11 }} />
+                    label={{ value: scoped ? "Spectrum median" : "median", position: "top", fill: T.ink, fontSize: 11 }} />
                 )}
                 {selectedMetric?.target != null && (
                   <ReferenceLine x={Number(selectedMetric.target)} stroke={T.teal} strokeWidth={1.6} strokeDasharray="6 3"
@@ -699,7 +732,38 @@ export function QapiTab() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          {benchRow && (
+          {benchRow && (scoped ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginTop: 16 }}>
+              <Kpi
+                label={`${orgName || "Client"} rate`}
+                value={fmtValue(clientAgg?.value, selectedMetric?.unit)}
+                sub={clientAgg?.den == null ? `${rankedData.length} facilities` : `${clientAgg.num.toLocaleString()} of ${clientAgg.den.toLocaleString()} residents`}
+                good={selectedMetric?.target != null && clientAgg?.value != null && Number(clientAgg.value) <= Number(selectedMetric.target)}
+              />
+              <Kpi
+                label="Spectrum goal"
+                value={selectedMetric?.target == null ? "Not scored" : fmtValue(selectedMetric.target, selectedMetric.unit)}
+                sub={
+                  selectedMetric?.target == null ? "Tracked for trend only"
+                  : clientAgg?.value == null ? "—"
+                  : Number(clientAgg.value) <= Number(selectedMetric.target) ? "At goal" : "Above goal"
+                }
+                good={selectedMetric?.target != null && clientAgg?.value != null && Number(clientAgg.value) <= Number(selectedMetric.target)}
+              />
+              <Kpi
+                label="Spectrum portfolio median"
+                value={fmtValue(benchRow.median_value, benchRow.unit)}
+                sub="Median facility across the portfolio"
+                good={benchRow.median_value != null && clientAgg?.value != null && Number(clientAgg.value) <= Number(benchRow.median_value)}
+              />
+              <Kpi
+                label="National"
+                value={selectedMetric?.benchmark_national == null ? "—" : fmtValue(selectedMetric.benchmark_national, selectedMetric.unit)}
+                sub={selectedMetric?.benchmark_national == null ? "No CMS equivalent" : `CMS${selectedMetric.benchmark_period ? ` · ${selectedMetric.benchmark_period}` : ""}`}
+                good={selectedMetric?.benchmark_national == null || clientAgg?.value == null || Number(clientAgg.value) <= Number(selectedMetric.benchmark_national)}
+              />
+            </div>
+          ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginTop: 16 }}>
               <Kpi
                 label={`Total ${(selectedMetric?.label || "").toLowerCase()}`}
@@ -736,7 +800,7 @@ export function QapiTab() {
                 }
               />
             </div>
-          )}
+          ))}
           {selectedMetric?.benchmark_source && (
             <p style={{ fontSize: 11, color: T.inkSoft, marginTop: 10, lineHeight: 1.5 }}>
               National reference: {selectedMetric.benchmark_source}
@@ -751,8 +815,8 @@ export function QapiTab() {
 
       {/* ——— Open items ——— */}
       <div style={{ marginTop: 36 }}>
-        <SectionLabel right={`${flags.length} open`}>Open items across the portfolio</SectionLabel>
-        {flags.length === 0 ? (
+        <SectionLabel right={`${scopedFlags.length} open`}>Open items{scoped ? "" : " across the portfolio"}</SectionLabel>
+        {scopedFlags.length === 0 ? (
           <Note tone={T.teal}>No open items. Anything flagged during a weekly review shows up here until it's resolved.</Note>
         ) : (
           <div className="ed-card" style={{ overflowX: "auto" }}>
@@ -763,7 +827,7 @@ export function QapiTab() {
                 </tr>
               </thead>
               <tbody>
-                {flags.map((g) => (
+                {scopedFlags.map((g) => (
                   <tr key={g.id} style={{ borderBottom: `1px solid ${T.hairline}` }}>
                     <td className="py-3 pr-4" style={{ fontSize: 13.5, fontWeight: 600, paddingLeft: 20 }}>{g.facility_name}</td>
                     <td className="py-3 pr-4" style={{ fontSize: 13, maxWidth: 380 }}>{g.question}</td>
@@ -779,7 +843,7 @@ export function QapiTab() {
       </div>
 
       {/* ——— Admin-only: RTA reconciliation tripwire ——— */}
-      {isAdmin && recon.length > 0 && (
+      {isAdmin && !scoped && recon.length > 0 && (
         <div style={{ marginTop: 36 }}>
           <SectionLabel right="Spectrum admin only">Rehospitalization reconciliation</SectionLabel>
           <div className="ed-card" style={{ overflowX: "auto" }}>
