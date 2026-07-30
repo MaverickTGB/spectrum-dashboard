@@ -15,7 +15,7 @@ import { useAuth } from "./auth.jsx";
 const KEY = "spectrum.orgScope";
 
 const T = {
-  ink: "#132A2E", inkSoft: "#5C7276", teal: "#0E7C86",
+  ink: "#132A2E", inkSoft: "#5C7276", teal: "#0E7C86", tealSoft: "#E4F1F2",
   amber: "#B07C1F", hairline: "#DCE7E9", panel: "#FFFFFF",
 };
 
@@ -83,9 +83,9 @@ export function ScopeSelector() {
       title="Limit the dashboard to one client's facilities"
       style={{
         fontSize: 13, padding: "9px 14px", borderRadius: 99,
-        border: `1px solid ${scoped ? T.amber : T.hairline}`,
-        background: scoped ? "#FDF6E7" : "transparent",
-        color: scoped ? T.amber : T.ink,
+       border: `1px solid ${scoped ? T.teal : T.hairline}`,
+        background: scoped ? T.tealSoft : "transparent",
+        color: scoped ? T.teal : T.ink,
         fontWeight: 600, cursor: "pointer", marginRight: 4, maxWidth: 230,
       }}
     >
@@ -106,7 +106,7 @@ export function ScopeBanner() {
     <div
       className="ed-ui"
       style={{
-        background: T.amber, color: "#FFF", padding: "9px 24px",
+    background: T.teal, color: "#FFF", padding: "9px 24px",
         display: "flex", alignItems: "center", justifyContent: "space-between",
         gap: 16, fontSize: 13, fontWeight: 600, letterSpacing: "0.01em",
       }}
