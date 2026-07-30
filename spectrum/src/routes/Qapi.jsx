@@ -517,11 +517,11 @@ export function QapiTab() {
     if (!metricKey && reportable.length) setMetricKey(reportable[0].key);
   }, [reportable, metricKey]);
 
-  const weeks = useMemo(() => [...new Set(scopedStatus.map((r) => r.week_of))].sort().reverse(), [scopedStatus]);
-  const gridWeeks = useMemo(() => weeks.slice(0, 6), [weeks]);
-
   const scopedStatus = useMemo(() => status.filter((r) => inScopeId(r.facility_id)), [status, facOrg, orgId, scoped]);
   const scopedFlags = useMemo(() => flags.filter((g) => inScopeName(g.facility_name)), [flags, facOrg, orgId, scoped]);
+
+  const weeks = useMemo(() => [...new Set(scopedStatus.map((r) => r.week_of))].sort().reverse(), [scopedStatus]);
+  const gridWeeks = useMemo(() => weeks.slice(0, 6), [weeks]);
 
   const facilitiesInGrid = useMemo(() => {
     const m = new Map();
