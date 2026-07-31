@@ -79,7 +79,7 @@ input:focus,select:focus{outline:2px solid var(--teal);outline-offset:-1px;borde
 .dchip[aria-pressed="true"]{background:var(--teal);border-color:var(--teal);color:#fff}
 
 /* line rows */
-.line{display:grid;grid-template-columns:1fr 130px 132px 92px 30px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--rule-2)}
+.line{display:grid;grid-template-columns:1fr 130px 132px 30px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--rule-2)}
 .line:last-of-type{border-bottom:none}
 @media(max-width:740px){.line{grid-template-columns:1fr 1fr;gap:7px}.line .wide{grid-column:1/-1}}
 .stepper{display:flex;align-items:center;border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:#fff}
@@ -247,7 +247,7 @@ ol.codes li{margin-bottom:6px;break-inside:avoid}
     <h2 class="sec"><span class="n">A</span>Facilities</h2>
     <div style="overflow-x:auto"><table class="reg" id="facTable"></table></div>
     <div class="btnrow" style="margin-top:13px"><button class="btn" id="addFacility">+ Add facility</button></div>
-    <p class="hint">Hourly fee and monthly hour cap should match the executed Medical Director Services Agreement. Facilities marked inactive stay out of the dropdowns but keep their history.</p>
+    <p class="hint">Facilities marked inactive stay out of the dropdowns but keep their history.</p>
   </div></div>
 
   <div class="doc"><div class="doc-body">
@@ -352,8 +352,7 @@ function seed(){
     facilities:SEED_FACILITIES.map(n=>({
       id:uid(), name:n, active:true,
       administrator: n==='Montevista' ? 'Brooke Cress' : '',
-      directorId:   n==='Montevista' ? mdId : '',
-      rate:0, capHours:0
+      directorId:   n==='Montevista' ? mdId : ''
     })),
     records:[]
   };
@@ -368,13 +367,12 @@ function blankVisit(){
 }
 function newForm(facilityId){
   const f=db.facilities.find(x=>x.id===facilityId)||{};
-  return { facilityId, adminName:f.administrator||'', rate:f.rate||0, lines:[] };
+  return { facilityId, adminName:f.administrator||'', lines:[] };
 }
 function newLine(p){ return { id:uid(), code:p?p.c:'', detail:p?p.d:'', date:'', hours:p?p.h:'' }; }
 function persist(){ store.write(db); }
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const money=v=>'$'+(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const stamp=()=>new Date().toLocaleString('en-US',{year:'numeric',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'});
 const facName=id=>{const f=db.facilities.find(x=>x.id===id);return f?f.name:'—'};
 function hint(id,m){const e=$(id);e.textContent=m;setTimeout(()=>{if(e.textContent===m)e.textContent=''},4000)}
@@ -415,7 +413,7 @@ $('copyLast').addEventListener('click',()=>{
                         .sort((a,b)=>b.period.localeCompare(a.period))[0];
   if(!prior){hint('copyHint','No earlier record saved for this director yet.');return}
   visit.forms=prior.forms.map(f=>({
-    facilityId:f.facilityId, adminName:f.adminName, rate:f.rate,
+    facilityId:f.facilityId, adminName:f.adminName,
     lines:f.lines.map(l=>({id:uid(),code:l.code,detail:l.detail,date:'',hours:l.hours}))
   }));
   activeStop=0; renderStops(); renderForm(); renderSummary(); renderAddStop();
@@ -466,17 +464,14 @@ function renderForm(){
   const area=$('formArea');
   if(!visit.forms.length){ area.innerHTML=''; return; }
   const f=visit.forms[activeStop];
-  const fac=db.facilities.find(x=>x.id===f.facilityId)||{};
   const nDays=daysInPeriod();
 
   area.innerHTML=`
   <div class="doc"><div class="doc-body">
     <h2 class="sec"><span class="n">03</span>${esc(facName(f.facilityId))}</h2>
 
-    <div class="grid g3" style="margin-bottom:18px">
+    <div class="grid" style="margin-bottom:18px;max-width:340px">
       <label class="f"><span>Administrator</span><input type="text" id="fAdmin" value="${esc(f.adminName)}"></label>
-      <label class="f"><span>Hourly fee</span><input type="number" step="0.01" min="0" id="fRate" value="${f.rate||''}"></label>
-      <label class="f"><span>Monthly cap (hrs)</span><input type="number" step="0.5" min="0" id="fCap" value="${fac.capHours||''}"></label>
     </div>
 
     <div class="chips">${QUICK.map((q,i)=>
@@ -489,17 +484,11 @@ function renderForm(){
 
     <div class="totals">
       <div class="tot"><div class="k">Hours</div><div class="v" id="fHours">0.00</div></div>
-      <div class="tot"><div class="k">Value</div><div class="v" id="fValue">$0.00</div></div>
     </div>
     <div id="fFlags"></div>
   </div></div>`;
 
   $('fAdmin').addEventListener('input',e=>{f.adminName=e.target.value;renderSummary()});
-  $('fRate').addEventListener('input',e=>{f.rate=parseFloat(e.target.value||0);renderLines();recalc()});
-  $('fCap').addEventListener('input',e=>{
-    const fc=db.facilities.find(x=>x.id===f.facilityId);
-    if(fc){fc.capHours=parseFloat(e.target.value||0);persist()} recalc();
-  });
   area.querySelectorAll('[data-q]').forEach(b=>b.addEventListener('click',()=>{
     const q=b.dataset.q==='blank'?null:QUICK[+b.dataset.q];
     f.lines.push(newLine(q));
@@ -525,7 +514,6 @@ function renderForm(){
           <input type="number" step="0.25" min="0" data-k="hours" value="${esc(l.hours)}" placeholder="0.00">
           <button data-step="1" data-i="${i}" aria-label="more">+</button>
         </div>
-        <div class="val">${money((parseFloat(l.hours)||0)*(parseFloat(f.rate)||0))}</div>
         <div><button class="rowdel" data-del="${i}">×</button></div>
         <div class="wide">
           <div class="datestrip">${Array.from({length:nDays},(_,k)=>{
@@ -538,9 +526,6 @@ function renderForm(){
     box.querySelectorAll('[data-k]').forEach(el=>el.addEventListener('input',e=>{
       const i=+e.target.closest('.line').dataset.i;
       f.lines[i][e.target.dataset.k]=e.target.value;
-      if(e.target.dataset.k==='hours'){
-        e.target.closest('.line').querySelector('.val').textContent=money((parseFloat(e.target.value)||0)*(parseFloat(f.rate)||0));
-      }
       recalc();
     }));
     box.querySelectorAll('[data-day]').forEach(b=>b.addEventListener('click',()=>{
@@ -562,15 +547,11 @@ function renderForm(){
   function recalc(){
     const h=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
     $('fHours').textContent=h.toFixed(2);
-    $('fValue').textContent=money(h*(parseFloat(f.rate)||0));
     const msgs=[];
-    const cap=(db.facilities.find(x=>x.id===f.facilityId)||{}).capHours||0;
-    if(cap>0&&h>cap) msgs.push(['stop',`Total hours (${h.toFixed(2)}) exceed the ${cap}-hour monthly cap for ${esc(facName(f.facilityId))}. Hours over cap are generally not payable without a written amendment.`]);
     const nd=f.lines.filter(l=>(parseFloat(l.hours)||0)>0&&!l.date).length;
     if(nd) msgs.push(['warn',`${nd} line${nd>1?'s need':' needs'} a date of service.`]);
     const nc=f.lines.filter(l=>(parseFloat(l.hours)||0)>0&&!l.code).length;
     if(nc) msgs.push(['warn',`${nc} line${nc>1?'s need':' needs'} a service code.`]);
-    if(!parseFloat(f.rate)) msgs.push(['warn','No hourly fee set for this facility, so values calculate to zero.']);
     $('fFlags').innerHTML=msgs.map(([k,m])=>`<div class="flag ${k}"><span class="ic">${k==='stop'?'✕':'!'}</span><span>${m}</span></div>`).join('');
     renderStops(); renderSummary();
   }
@@ -578,27 +559,25 @@ function renderForm(){
 
 /* ============ visit summary ============ */
 function visitTotals(){
-  let h=0,v=0;
+  let h=0;
   visit.forms.forEach(f=>{
-    const fh=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
-    h+=fh; v+=fh*(parseFloat(f.rate)||0);
+    h+=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
   });
-  return {h,v};
+  return {h};
 }
 function renderSummary(){
   const el=$('visitSummary');
   if(!visit.forms.length){ el.innerHTML='<div class="empty-state">Nothing to certify yet.</div>'; return; }
   const t=visitTotals();
   el.innerHTML=`<div style="overflow-x:auto"><table class="reg">
-    <tr><th>Facility</th><th>Administrator</th><th class="r">Hours</th><th class="r">Value</th></tr>
+    <tr><th>Facility</th><th>Administrator</th><th class="r">Hours</th></tr>
     ${visit.forms.map(f=>{
       const h=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
       return `<tr><td>${esc(facName(f.facilityId))}</td><td>${esc(f.adminName||'—')}</td>
-        <td class="r val">${h.toFixed(2)}</td><td class="r val">${money(h*(parseFloat(f.rate)||0))}</td></tr>`;
+        <td class="r val">${h.toFixed(2)}</td></tr>`;
     }).join('')}
     <tr><td colspan="2" style="font-weight:600">${visit.forms.length} form${visit.forms.length>1?'s':''}</td>
-      <td class="r val" style="font-weight:600">${t.h.toFixed(2)}</td>
-      <td class="r val" style="font-weight:600">${money(t.v)}</td></tr>
+      <td class="r val" style="font-weight:600">${t.h.toFixed(2)}</td></tr>
   </table></div>
   ${visit.physSig?`<div class="flag ok"><span class="ic">✓</span><span>Signed ${esc(visit.physSig.ts)} — covers all ${visit.forms.length} form${visit.forms.length>1?'s':''} above.</span></div>`:''}`;
 }
@@ -611,14 +590,13 @@ $('certify').addEventListener('click',()=>{
   const d=db.directors.find(x=>x.id===visit.directorId);
   const t=visitTotals();
   $('certList').innerHTML=`<table class="reg">
-    <tr><th>Certifying</th><th class="r">Hours</th><th class="r">Value</th></tr>
+    <tr><th>Certifying</th><th class="r">Hours</th></tr>
     ${visit.forms.map(f=>{
       const h=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
       return `<tr><td>${esc(facName(f.facilityId))} · ${esc(visit.period)}</td>
-        <td class="r val">${h.toFixed(2)}</td><td class="r val">${money(h*(parseFloat(f.rate)||0))}</td></tr>`;
+        <td class="r val">${h.toFixed(2)}</td></tr>`;
     }).join('')}
-    <tr><td style="font-weight:600">Total</td><td class="r val" style="font-weight:600">${t.h.toFixed(2)}</td>
-    <td class="r val" style="font-weight:600">${money(t.v)}</td></tr>
+    <tr><td style="font-weight:600">Total</td><td class="r val" style="font-weight:600">${t.h.toFixed(2)}</td></tr>
   </table>
   <div style="padding:12px 14px;font-family:var(--serif);font-size:15px;line-height:1.45;border-top:1px solid var(--rule)">
     I certify that this time report is a true and accurate record of Physician's services as Medical Director.
@@ -671,15 +649,13 @@ function buildPrint(v){
     return new Date(y,m-1,1).toLocaleString('en-US',{month:'long',year:'numeric'}); })();
   $('printArea').innerHTML=v.forms.map(f=>{
     const h=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
-    const val=h*(parseFloat(f.rate)||0);
     const rows=f.lines.map(l=>{
-      const lv=(parseFloat(l.hours)||0)*(parseFloat(f.rate)||0);
       const desc=(l.code?l.code+'. ':'')+(l.detail||(l.code?SERVICE_CODES[l.code-1]:''));
       const dt=l.date?l.date.split('-').slice(1).join('/')+'/'+l.date.split('-')[0]:'';
       return `<tr><td>${esc(desc)}</td><td style="text-align:center">${esc(dt)}</td>
-        <td class="r">${(parseFloat(l.hours)||0).toFixed(2)}</td><td class="r">${money(lv)}</td></tr>`;
+        <td class="r">${(parseFloat(l.hours)||0).toFixed(2)}</td></tr>`;
     }).join('');
-    const pad=Array.from({length:Math.max(0,10-f.lines.length)},()=>'<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>').join('');
+    const pad=Array.from({length:Math.max(0,10-f.lines.length)},()=>'<tr><td>&nbsp;</td><td></td><td></td></tr>').join('');
     return `<div class="pf">
       <h1>EXHIBIT A</h1><h2>MEDICAL DIRECTOR TIME RECORD</h2>
       <div class="hdr">
@@ -690,10 +666,10 @@ function buildPrint(v){
       </div>
       <table>
         <tr><th>DESCRIPTION OF SERVICES PROVIDED<br>(Service codes may be substituted for narrative)</th>
-            <th>DATE OF SERVICE</th><th>TIME EXPENDED</th><th>VALUE (TIME EXPENDED X HOURLY FEE)</th></tr>
+            <th>DATE OF SERVICE</th><th>TIME EXPENDED</th></tr>
         ${rows}${pad}
         <tr><td style="text-align:right;font-weight:bold">TOTAL</td><td></td>
-            <td class="r"><b>${h.toFixed(2)}</b></td><td class="r"><b>${money(val)}</b></td></tr>
+            <td class="r"><b>${h.toFixed(2)}</b></td></tr>
       </table>
       <div class="codes"><b>Service Codes:</b><br>
         ${SERVICE_CODES.map((c,i)=>`${i+1}. ${esc(c)}`).join('<br>')}
@@ -719,12 +695,12 @@ function renderSaved(){
   const el=$('savedList');
   if(!db.records.length){ el.innerHTML='<div class="empty-state">Nothing saved yet.</div>'; return; }
   el.innerHTML=`<div style="overflow-x:auto"><table class="reg">
-    <tr><th>Period</th><th>Medical Director</th><th>Facilities</th><th class="r">Hours</th><th class="r">Value</th><th>Status</th><th></th></tr>
+    <tr><th>Period</th><th>Medical Director</th><th>Facilities</th><th class="r">Hours</th><th>Status</th><th></th></tr>
     ${db.records.map(r=>{
       const d=db.directors.find(x=>x.id===r.directorId);
-      let h=0,v=0; r.forms.forEach(f=>{const fh=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);h+=fh;v+=fh*(parseFloat(f.rate)||0)});
+      let h=0; r.forms.forEach(f=>{h+=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0)});
       return `<tr><td class="val">${esc(r.period)}</td><td>${esc(d?d.name:'—')}</td>
-        <td>${r.forms.length}</td><td class="r val">${h.toFixed(2)}</td><td class="r val">${money(v)}</td>
+        <td>${r.forms.length}</td><td class="r val">${h.toFixed(2)}</td>
         <td>${r.physSig?'<span class="pill on">Signed</span>':'<span class="pill">Unsigned</span>'}</td>
         <td style="text-align:right;white-space:nowrap">
           <button class="btn" data-open="${r.id}">Open</button>
@@ -745,22 +721,20 @@ function renderSaved(){
 /* ============ registry ============ */
 function renderRegistry(){
   $('facTable').innerHTML=`
-    <tr><th>Facility</th><th>Administrator</th><th>Medical Director</th><th class="r">Hourly fee</th><th class="r">Cap (hrs)</th><th>Active</th><th></th></tr>
+    <tr><th>Facility</th><th>Administrator</th><th>Medical Director</th><th>Active</th><th></th></tr>
     ${db.facilities.map(f=>`<tr data-f="${f.id}">
       <td><input type="text" data-fk="name" value="${esc(f.name)}"></td>
       <td><input type="text" data-fk="administrator" value="${esc(f.administrator)}"></td>
       <td><select data-fk="directorId"><option value="">—</option>
         ${db.directors.map(d=>`<option value="${d.id}"${d.id===f.directorId?' selected':''}>${esc(d.name)}</option>`).join('')}
       </select></td>
-      <td class="r"><input type="number" step="0.01" data-fk="rate" value="${f.rate||''}"></td>
-      <td class="r"><input type="number" step="0.5" data-fk="capHours" value="${f.capHours||''}"></td>
       <td><input type="checkbox" data-fk="active"${f.active?' checked':''}></td>
       <td style="text-align:right"><button class="rowdel" data-delf="${f.id}">×</button></td>
     </tr>`).join('')}`;
   $('facTable').querySelectorAll('[data-fk]').forEach(el=>el.addEventListener('input',e=>{
     const f=db.facilities.find(x=>x.id===e.target.closest('tr').dataset.f);
     const k=e.target.dataset.fk;
-    f[k]= k==='active' ? e.target.checked : (k==='rate'||k==='capHours') ? parseFloat(e.target.value||0) : e.target.value;
+    f[k]= k==='active' ? e.target.checked : e.target.value;
     persist(); renderAddStop();
   }));
   $('facTable').querySelectorAll('[data-delf]').forEach(b=>b.addEventListener('click',()=>{
@@ -786,7 +760,7 @@ function renderRegistry(){
   }));
 }
 $('addFacility').addEventListener('click',()=>{
-  db.facilities.push({id:uid(),name:'New facility',active:true,administrator:'',directorId:'',rate:0,capHours:0});
+  db.facilities.push({id:uid(),name:'New facility',active:true,administrator:''  ,directorId:''});
   persist(); renderRegistry(); renderAddStop();
 });
 $('addMd').addEventListener('click',()=>{
