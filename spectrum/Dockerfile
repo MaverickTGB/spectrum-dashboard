@@ -24,4 +24,4 @@ COPY --from=build /app/dist ./dist
 EXPOSE 3000
 # -s = single-page app mode: unknown routes fall back to index.html
 #      (this is what makes /login, /admin, etc. work with react-router)
-CMD ["sh", "-c", "serve -s dist -l ${PORT:-3000}"]
+CMD ["sh", "-c", "serve dist -l ${PORT:-3000}"]
