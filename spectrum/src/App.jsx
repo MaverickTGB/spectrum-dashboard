@@ -6,6 +6,7 @@ import Login from "./routes/Login.jsx";
 import RequestAccess from "./routes/RequestAccess.jsx";
 import Executive from "./routes/Executive.jsx";
 import Admin from "./routes/Admin.jsx";
+import MedicalDirector from "./routes/MedicalDirector.jsx";
 
 function Protected({ children, adminOnly = false }) {
   const { session, profile, loading, isAdmin, isApproved } = useAuth();
