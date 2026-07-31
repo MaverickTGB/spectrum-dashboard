@@ -612,7 +612,7 @@ function ExecutiveInner() {
   const [rawData, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const { orgId, scoped } = useScope();
   const data = useMemo(() => applyScope(rawData, orgId), [rawData, orgId]);
   const tabs = scoped
@@ -691,6 +691,14 @@ function ExecutiveInner() {
   </header>
 
       <ScopeBanner />
+
+      {isAdmin && (
+        <div style={{ background: T.panel, borderBottom: `1px solid ${T.hairline}`, padding: "10px 24px", display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 700 }}>Admin</span>
+          <a href="/admin" style={{ fontSize: 12.5, fontWeight: 600, color: T.teal, textDecoration: "none", padding: "6px 14px", border: `1px solid ${T.hairline}`, borderRadius: 99 }}>Approve users</a>
+          <a href="/admin/md-time" style={{ fontSize: 12.5, fontWeight: 600, color: T.teal, textDecoration: "none", padding: "6px 14px", border: `1px solid ${T.hairline}`, borderRadius: 99 }}>MD time record</a>
+        </div>
+      )}
 
       <main className="mx-auto px-6 pb-14 pt-8" style={{ maxWidth: 1280 }}>
         {loading && <div style={{ color: T.inkSoft, fontSize: 14, padding: "40px 0" }}>Loading {month ? monthLabel(month) : ""}…</div>}
