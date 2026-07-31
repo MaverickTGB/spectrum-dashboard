@@ -6,6 +6,7 @@ import {
 import { supabase } from "../lib/supabase.js";
 import { useAuth } from "../lib/auth.jsx";
 import { useScope } from "../lib/scope.jsx";
+import { MetricTrend, FlagHistory, QapiWatchList } from "./QapiInsights.jsx";
 
 /* ————————————————————— Tokens (mirrors Executive.jsx) ————————————————————— */
 const T = {
@@ -401,31 +402,8 @@ export function QapiFacilityPanel({ facilityId }) {
       </div>
       <ThresholdFootnote metrics={reportable} />
 
-      {flags.length > 0 && (
-        <div style={{ marginTop: 24 }}>
-          <SectionLabel right={`${flags.length} open`}>Open items</SectionLabel>
-          <div className="ed-card" style={{ overflowX: "auto" }}>
-            <table className="w-full" style={{ borderCollapse: "collapse", minWidth: 620 }}>
-              <thead>
-                <tr style={{ borderBottom: `1px solid ${T.hairline}`, background: "#F7FAFB" }}>
-                  <Th first>Item</Th><Th>Section</Th><Th>Owner</Th><Th>Raised</Th><Th>Days open</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {flags.map((g) => (
-                  <tr key={g.id} style={{ borderBottom: `1px solid ${T.hairline}` }}>
-                    <td className="py-3 pr-4" style={{ fontSize: 13, paddingLeft: 20, maxWidth: 420 }}>{g.question}</td>
-                    <td className="py-3 pr-4" style={{ fontSize: 12.5, color: T.inkSoft }}>{g.section || "—"}</td>
-                    <td className="py-3 pr-4" style={{ fontSize: 12.5, color: T.inkSoft }}>{g.owner || "Unassigned"}</td>
-                    <td className="ed-num py-3 pr-4" style={{ fontSize: 12.5, color: T.inkSoft }}>{shortWeek(g.week_of)}</td>
-                    <td className="ed-num py-3 pr-4" style={{ fontSize: 13, fontWeight: 600, color: g.days_open > 21 ? T.alert : g.days_open > 7 ? T.amber : T.ink }}>{g.days_open}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <MetricTrend rows={rows} metrics={reportable} weeks={weeks} />
+      <FlagHistory facilityId={facilityId} />
     </>
   );
 }
@@ -622,6 +600,8 @@ export function QapiTab() {
         <Kpi label="Medical director present" value={submittedCount ? `${mdCount} / ${submittedCount}` : "—"} sub="Of submitted reviews" good={submittedCount > 0 && mdCount === submittedCount} />
         <Kpi label="Facilities in red" value={redFacilities} sub="On at least one metric" good={redFacilities === 0} />
       </section>
+
+      <QapiWatchList metrics={reportable} inScope={inScopeId} scoped={scoped} />
 
       {/* ——— Compliance grid ——— */}
       <SectionLabel right={`Last ${gridWeeks.length} weeks`}>Submission compliance</SectionLabel>
