@@ -613,6 +613,7 @@ function ExecutiveInner() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const { profile, isAdmin } = useAuth();
+  const isStaff = ["admin", "manager"].includes(profile?.role);
   const { orgId, scoped } = useScope();
   const data = useMemo(() => applyScope(rawData, orgId), [rawData, orgId]);
   const tabs = scoped
@@ -690,12 +691,13 @@ function ExecutiveInner() {
         </div>
   </header>
 
-      <ScopeBanner />
+    <ScopeBanner />
 
-      {isAdmin && (
+
+     {isStaff && (
         <div style={{ background: T.panel, borderBottom: `1px solid ${T.hairline}`, padding: "10px 24px", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 700 }}>Admin</span>
-          <a href="/admin" style={{ fontSize: 12.5, fontWeight: 600, color: T.teal, textDecoration: "none", padding: "6px 14px", border: `1px solid ${T.hairline}`, borderRadius: 99 }}>Approve users</a>
+          {isAdmin && <a href="/admin" style={{ fontSize: 12.5, fontWeight: 600, color: T.teal, textDecoration: "none", padding: "6px 14px", border: `1px solid ${T.hairline}`, borderRadius: 99 }}>Approve users</a>}
           <a href="/admin/md-time" style={{ fontSize: 12.5, fontWeight: 600, color: T.teal, textDecoration: "none", padding: "6px 14px", border: `1px solid ${T.hairline}`, borderRadius: 99 }}>MD time record</a>
         </div>
       )}
