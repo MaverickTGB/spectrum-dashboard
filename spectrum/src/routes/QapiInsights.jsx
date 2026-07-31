@@ -245,7 +245,7 @@ export function FlagHistory({ facilityId }) {
     if (!facilityId) return;
     let alive = true;
     setLoading(true); setErr(null);
-    supabase.from("qapi_flags")
+    supabase.from("qapi_flag_history")
       .select("id, week_of, section, item_id, question, answer, owner, resolved, resolved_at")
       .eq("facility_id", facilityId)
       .gte("week_of", addWeeks(thisMonday(), -25))
@@ -454,7 +454,7 @@ export function QapiWatchList({ metrics = [], inScope = () => true, scoped = fal
       supabase.from("qapi_submission_status")
         .select("facility_id, facility_name, week_of, submitted, facility_census, md_attended")
         .gte("week_of", addWeeks(thisMonday(), -(RECENT - 1))),
-      supabase.from("qapi_flags")
+      supabase.from("qapi_flag_history")
         .select("facility_id, question, week_of, resolved")
         .gte("week_of", since),
     ]).then(([f, w, s, g]) => {
