@@ -44,6 +44,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/request-access" element={<RequestAccess />} />
         <Route path="/admin" element={<Protected adminOnly><Admin /></Protected>} />
+        <Route path="/admin/md-time" element={<Protected adminOnly><MedicalDirector /></Protected>} />
         <Route path="/" element={<Protected><Executive /></Protected>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
