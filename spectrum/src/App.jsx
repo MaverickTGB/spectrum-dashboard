@@ -8,12 +8,14 @@ import Executive from "./routes/Executive.jsx";
 import Admin from "./routes/Admin.jsx";
 import MedicalDirector from "./routes/MedicalDirector.jsx";
 
-function Protected({ children, adminOnly = false }) {
+function Protected({ children, adminOnly = false, staffOnly = false }) {
   const { session, profile, loading, isAdmin, isApproved } = useAuth();
+  const isStaff = ["admin", "manager"].includes(profile?.role);
   if (loading) return <Loading />;
   if (!session) return <Navigate to="/login" replace />;
   if (!isApproved && !isAdmin) return <PendingScreen status={profile?.status} />;
   if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
+  if (staffOnly && !isStaff) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -44,7 +46,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/request-access" element={<RequestAccess />} />
         <Route path="/admin" element={<Protected adminOnly><Admin /></Protected>} />
-        <Route path="/admin/md-time" element={<Protected adminOnly><MedicalDirector /></Protected>} />
+        <Route path="/admin/md-time" element={<Protected staffOnly><MedicalDirector /></Protected>} />
         <Route path="/" element={<Protected><Executive /></Protected>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
