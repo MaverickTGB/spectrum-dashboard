@@ -1,0 +1,40 @@
+import React from "react";
+
+export default function MedicalDirector() {
+  return (
+    <div style={{ padding: "0 0 24px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          padding: "16px 24px",
+          borderBottom: "1px solid #DCE7E9",
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: "#5C7276" }}>
+            Admin tools
+          </div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, margin: "4px 0 0" }}>
+            Medical Director Time Record
+          </h1>
+        </div>
+        
+          href="/md-time-record.html"
+          target="_blank"
+          rel="noreferrer"
+          style={{ fontSize: 13, color: "#0E7C86", fontWeight: 600 }}
+        >
+          Open in new tab ↗
+        </a>
+      </div>
+
+      <iframe
+        src="/md-time-record.html"
+        title="Medical Director Time Record"
+        style={{ width: "100%", height: "calc(100vh - 190px)", border: 0, display: "block" }}
+      />
+    </div>
+  );
+}
