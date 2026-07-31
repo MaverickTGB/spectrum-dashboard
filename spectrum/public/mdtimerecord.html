@@ -1,40 +1,832 @@
-import React from "react";
-
-export default function MedicalDirector() {
-  return (
-    <div style={{ padding: "0 0 24px" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          padding: "16px 24px",
-          borderBottom: "1px solid #DCE7E9",
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: "#5C7276" }}>
-            Admin tools
-          </div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, margin: "4px 0 0" }}>
-            Medical Director Time Record
-          </h1>
-        </div>
-        
-          href="/md-time-record.html"
-          target="_blank"
-          rel="noreferrer"
-          style={{ fontSize: 13, color: "#0E7C86", fontWeight: 600 }}
-        >
-          Open in new tab ↗
-        </a>
-      </div>
-
-      <iframe
-        src="/md-time-record.html"
-        title="Medical Director Time Record"
-        style={{ width: "100%", height: "calc(100vh - 190px)", border: 0, display: "block" }}
-      />
-    </div>
-  );
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Medical Director Time Record — Spectrum Healthcare Solutions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#12161c; --ink-2:#3b444f; --ink-3:#6b7683;
+  --paper:#f6f7f5; --card:#fff; --rule:#dbe0dc; --rule-2:#eceeeb;
+  --teal:#0e5a63; --teal-2:#0a444b; --teal-bg:#eef4f4;
+  --amber:#a06a12; --amber-bg:#fdf6e6;
+  --red:#9c2f27; --red-bg:#fbeeed;
+  --green:#2f6b46;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --serif:'Newsreader',Georgia,serif;
+  --shadow:0 1px 2px rgba(18,22,28,.06), 0 8px 24px -12px rgba(18,22,28,.18);
 }
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.spectrum{background:linear-gradient(180deg,#6B2C45 0%,#B0343A 20%,#C99A16 40%,#2F7A3A 60%,#2E7DB5 80%,#232878 100%)}
+
+.app{max-width:1040px;margin:0 auto;padding:24px 18px 90px}
+header.masthead{display:flex;align-items:flex-start;gap:14px;margin-bottom:20px}
+.mast-rule{width:5px;align-self:stretch;min-height:50px;border-radius:3px}
+.mast-title{font-family:var(--serif);font-size:26px;line-height:1.15;margin:0}
+.mast-sub{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-top:5px}
+
+nav.tabs{display:flex;gap:2px;border-bottom:1px solid var(--rule);margin-bottom:22px;flex-wrap:wrap}
+nav.tabs button{background:none;border:none;padding:10px 14px;font-size:13px;font-weight:500;color:var(--ink-3);border-bottom:2px solid transparent;margin-bottom:-1px}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--teal)}
+.panel{display:none}
+.panel.active{display:block}
+
+.doc{background:var(--card);border:1px solid var(--rule);border-radius:6px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.doc::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px}
+.doc.edge::before{background:linear-gradient(180deg,#6B2C45 0%,#B0343A 20%,#C99A16 40%,#2F7A3A 60%,#2E7DB5 80%,#232878 100%)}
+.doc-body{padding:22px 24px 24px 28px}
+.doc + .doc{margin-top:16px}
+
+h2.sec{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin:0 0 14px}
+h2.sec .n{color:var(--teal);margin-right:8px}
+
+.grid{display:grid;gap:13px 16px}
+.g3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:740px){.g3{grid-template-columns:1fr}}
+label.f{display:block}
+label.f > span{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:5px}
+input[type=text],input[type=number],input[type=date],input[type=month],select{width:100%;padding:9px 10px;border:1px solid var(--rule);border-radius:4px;background:#fff}
+input:focus,select:focus{outline:2px solid var(--teal);outline-offset:-1px;border-color:var(--teal)}
+.hint{font-size:12px;color:var(--ink-3);margin-top:5px}
+
+/* facility tabs within a visit */
+.stoprow{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.stop{border:1px solid var(--rule);background:#fff;border-radius:20px;padding:7px 14px;font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px}
+.stop[aria-selected="true"]{background:var(--teal);border-color:var(--teal);color:#fff}
+.stop .hrs{font-family:var(--mono);font-size:11px;opacity:.7}
+.stop .x{opacity:.5;font-size:15px;line-height:1}
+.stop .x:hover{opacity:1}
+
+/* quick add chips */
+.chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:6px}
+.chip-add{border:1px solid var(--rule);background:#fff;border-radius:5px;padding:9px 12px;font-size:13px;text-align:left;line-height:1.25}
+.chip-add:hover{border-color:var(--teal);background:var(--teal-bg)}
+.chip-add b{display:block;font-weight:500}
+.chip-add em{font-style:normal;font-family:var(--mono);font-size:10px;color:var(--ink-3)}
+
+/* date strip */
+.datestrip{display:flex;gap:3px;flex-wrap:wrap;margin:10px 0 0}
+.dchip{border:1px solid var(--rule);background:#fff;border-radius:4px;width:34px;height:32px;font-family:var(--mono);font-size:12px;padding:0}
+.dchip.weekend{color:var(--ink-3);background:#fafbf9}
+.dchip[aria-pressed="true"]{background:var(--teal);border-color:var(--teal);color:#fff}
+
+/* line rows */
+.line{display:grid;grid-template-columns:1fr 130px 132px 92px 30px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--rule-2)}
+.line:last-of-type{border-bottom:none}
+@media(max-width:740px){.line{grid-template-columns:1fr 1fr;gap:7px}.line .wide{grid-column:1/-1}}
+.stepper{display:flex;align-items:center;border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:#fff}
+.stepper button{border:none;background:none;width:32px;height:34px;font-size:17px;color:var(--ink-3);line-height:1}
+.stepper button:hover{background:var(--teal-bg);color:var(--teal)}
+.stepper input{border:none;text-align:center;width:100%;padding:8px 0;font-family:var(--mono)}
+.stepper input:focus{outline:none}
+.val{font-family:var(--mono);font-size:13px;text-align:right;white-space:nowrap}
+.rowdel{background:none;border:1px solid transparent;color:var(--ink-3);width:28px;height:28px;border-radius:4px;line-height:1;font-size:16px}
+.rowdel:hover{color:var(--red);border-color:var(--rule)}
+
+.totals{display:flex;justify-content:flex-end;gap:30px;padding:14px 4px 0;flex-wrap:wrap}
+.tot{text-align:right}
+.tot .k{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.tot .v{font-family:var(--mono);font-size:20px;font-weight:500;margin-top:2px}
+
+.btn{border:1px solid var(--rule);background:#fff;border-radius:5px;padding:9px 14px;font-size:13px;font-weight:500}
+.btn:hover{border-color:var(--ink-3)}
+.btn.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.btn.primary:hover{background:var(--teal-2);border-color:var(--teal-2)}
+.btn.big{padding:13px 22px;font-size:15px}
+.btn.ghost{border-color:transparent;color:var(--ink-3)}
+.btn.ghost:hover{color:var(--ink);border-color:var(--rule)}
+.btn.danger{color:var(--red)}
+.btnrow{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.btnrow.end{justify-content:flex-end}
+
+.flag{display:flex;gap:10px;padding:11px 13px;border-radius:5px;font-size:13px;line-height:1.45;margin-top:12px}
+.flag .ic{font-family:var(--mono);font-weight:600;flex:none}
+.flag.warn{background:var(--amber-bg);color:var(--amber);border:1px solid #f0e0bd}
+.flag.stop{background:var(--red-bg);color:var(--red);border:1px solid #f0d3d0}
+.flag.ok{background:#eef4f0;color:var(--green);border:1px solid #d5e5db}
+
+table.reg{width:100%;border-collapse:collapse}
+table.reg th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);text-align:left;padding:9px 10px;border-bottom:1px solid var(--rule)}
+table.reg td{padding:8px 10px;border-bottom:1px solid var(--rule-2)}
+table.reg tr:last-child td{border-bottom:none}
+td.r,th.r{text-align:right}
+.pill{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:99px;border:1px solid var(--rule);color:var(--ink-3)}
+.pill.on{color:var(--green);border-color:#cfe2d6;background:#f1f7f3}
+.empty-state{padding:34px 20px;text-align:center;color:var(--ink-3);font-size:13.5px}
+
+.modal{position:fixed;inset:0;background:rgba(18,22,28,.5);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal.open{display:flex}
+.modal-card{background:#fff;border-radius:8px;max-width:640px;width:100%;padding:22px;max-height:92vh;overflow:auto}
+.modal-card h3{font-family:var(--serif);font-size:21px;margin:0 0 6px}
+.modal-card p.sub{color:var(--ink-3);font-size:13px;margin:0 0 14px}
+#padCanvas{width:100%;height:190px;border:1px solid var(--rule);border-radius:5px;background:#fff;touch-action:none;display:block}
+.padline{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);margin-top:6px}
+.certify-list{border:1px solid var(--rule);border-radius:5px;margin-bottom:16px}
+.sigshow{border:1px dashed var(--rule);border-radius:4px;background:#fcfdfb;height:96px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.sigshow img{max-height:84px;max-width:94%}
+.sigshow .empty{font-size:12.5px;color:var(--ink-3)}
+
+ol.codes{font-size:13px;color:var(--ink-2);padding-left:22px;margin:0;columns:2;column-gap:32px}
+ol.codes li{margin-bottom:6px;break-inside:avoid}
+@media(max-width:740px){ol.codes{columns:1}}
+
+/* ---------- print ---------- */
+#printArea{display:none}
+@media print{
+  body{background:#fff}
+  .app,.modal{display:none !important}
+  #printArea{display:block;font-family:Times,serif;font-size:11pt;color:#000}
+  .pf{page-break-after:always;padding:0}
+  .pf:last-child{page-break-after:auto}
+  .pf h1{text-align:center;font-size:13pt;text-decoration:underline;margin:0 0 10px}
+  .pf h2{text-align:center;font-size:12pt;margin:0 0 16px}
+  .pf .hdr{margin-bottom:12px;line-height:2}
+  .pf .hdr u{min-width:180px;display:inline-block}
+  .pf table{width:100%;border-collapse:collapse;margin-bottom:14px}
+  .pf th,.pf td{border:1px solid #000;padding:4px 6px;font-size:10pt}
+  .pf th{text-align:center;font-weight:bold}
+  .pf td.r{text-align:right}
+  .pf .cert{margin:16px 0 10px;font-size:11pt}
+  .pf .sigblk{display:flex;gap:20px}
+  .pf .sigblk > div{flex:1;border:1px solid #000;padding:10px;min-height:150px}
+  .pf .sigblk img{max-height:52px}
+  .pf .stamp{font-family:monospace;font-size:8pt;margin-top:4px}
+  .pf .codes{font-size:8.5pt;line-height:1.35}
+  .pf .foot{font-family:monospace;font-size:8pt;margin-top:10px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header class="masthead">
+  <div class="mast-rule spectrum"></div>
+  <div>
+    <h1 class="mast-title">Medical Director Time Record</h1>
+    <div class="mast-sub">Exhibit A &middot; Spectrum Healthcare Solutions</div>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" data-tab="visit">Capture</button>
+  <button role="tab" aria-selected="false" data-tab="saved">Saved records</button>
+  <button role="tab" aria-selected="false" data-tab="registry">Facilities &amp; directors</button>
+  <button role="tab" aria-selected="false" data-tab="data">Data</button>
+</nav>
+
+<!-- ================= CAPTURE ================= -->
+<section class="panel active" id="tab-visit">
+
+  <div class="doc edge">
+    <div class="doc-body">
+      <h2 class="sec"><span class="n">01</span>Who and when</h2>
+      <div class="grid g3">
+        <label class="f"><span>Medical Director</span><select id="director"></select></label>
+        <label class="f"><span>Credential</span><input type="text" id="mdTitle" placeholder="MD"></label>
+        <label class="f"><span>Month / Year</span><input type="month" id="period"></label>
+      </div>
+      <div class="btnrow" style="margin-top:13px">
+        <button class="btn" id="copyLast">Copy last month's activity</button>
+        <span class="hint" id="copyHint"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="doc">
+    <div class="doc-body">
+      <h2 class="sec"><span class="n">02</span>Facilities covered this month</h2>
+      <div class="stoprow" id="stops"></div>
+      <label class="f" style="max-width:340px"><span>Add a facility</span>
+        <select id="addStop"></select>
+      </label>
+    </div>
+  </div>
+
+  <div id="formArea"></div>
+
+  <div class="doc">
+    <div class="doc-body">
+      <h2 class="sec"><span class="n">04</span>Certify and finish</h2>
+      <div id="visitSummary"></div>
+      <div class="btnrow" style="margin-top:16px">
+        <button class="btn primary big" id="certify">Review &amp; sign</button>
+        <button class="btn" id="printAll">Print all forms</button>
+        <button class="btn ghost" id="newVisit">Start over</button>
+        <span class="hint" id="visitHint"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="doc">
+    <div class="doc-body">
+      <h2 class="sec"><span class="n">05</span>Service code reference</h2>
+      <ol class="codes" id="codeList"></ol>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SAVED ================= -->
+<section class="panel" id="tab-saved">
+  <div class="doc"><div class="doc-body">
+    <h2 class="sec">Saved records</h2>
+    <div id="savedList"></div>
+  </div></div>
+</section>
+
+<!-- ================= REGISTRY ================= -->
+<section class="panel" id="tab-registry">
+  <div class="doc edge"><div class="doc-body">
+    <h2 class="sec"><span class="n">A</span>Facilities</h2>
+    <div style="overflow-x:auto"><table class="reg" id="facTable"></table></div>
+    <div class="btnrow" style="margin-top:13px"><button class="btn" id="addFacility">+ Add facility</button></div>
+    <p class="hint">Hourly fee and monthly hour cap should match the executed Medical Director Services Agreement. Facilities marked inactive stay out of the dropdowns but keep their history.</p>
+  </div></div>
+
+  <div class="doc"><div class="doc-body">
+    <h2 class="sec"><span class="n">B</span>Medical directors</h2>
+    <div style="overflow-x:auto"><table class="reg" id="mdTable"></table></div>
+    <div class="btnrow" style="margin-top:13px"><button class="btn" id="addMd">+ Add medical director</button></div>
+  </div></div>
+</section>
+
+<!-- ================= DATA ================= -->
+<section class="panel" id="tab-data">
+  <div class="doc"><div class="doc-body">
+    <h2 class="sec">Backup &amp; transfer</h2>
+    <p class="hint" style="margin-top:0">Everything lives in this browser only. Nothing is transmitted anywhere.</p>
+    <div class="btnrow" style="margin-top:12px">
+      <button class="btn" id="exportJson">Export all data (.json)</button>
+      <button class="btn" id="importJson">Import a backup</button>
+      <input type="file" id="importFile" accept="application/json" style="display:none">
+      <button class="btn danger" id="wipe">Erase all data</button>
+    </div>
+    <div id="storageFlag"></div>
+    <label class="f" style="max-width:320px;margin-top:20px"><span>Signed in as</span><input type="text" id="userName" placeholder="Your name"></label>
+  </div></div>
+</section>
+
+</div>
+
+<!-- ================= CERTIFY MODAL ================= -->
+<div class="modal" id="padModal">
+  <div class="modal-card">
+    <h3 id="padTitle">Review and sign</h3>
+    <p class="sub" id="padSub">Hand the device to the physician. One signature certifies every form listed below.</p>
+    <div class="certify-list" id="certList"></div>
+    <canvas id="padCanvas"></canvas>
+    <div class="padline" id="padStamp"></div>
+    <div class="btnrow end" style="margin-top:14px">
+      <button class="btn ghost" id="padClear">Clear</button>
+      <button class="btn ghost" id="padCancel">Cancel</button>
+      <button class="btn primary" id="padApply">Apply signature</button>
+    </div>
+  </div>
+</div>
+
+<div id="printArea"></div>
+
+<script>
+/* ============ storage ============ */
+const KEY='spectrum_mdtr_v2';
+let storageOK=true; const mem={};
+const store={
+  read(){ try{const r=localStorage.getItem(KEY);return r?JSON.parse(r):null}catch(e){storageOK=false;return mem[KEY]||null} },
+  write(v){ try{localStorage.setItem(KEY,JSON.stringify(v))}catch(e){storageOK=false;mem[KEY]=v} }
+};
+
+const SERVICE_CODES=[
+ 'Ensuring that residents have appropriate physician coverage',
+ 'Developing, implementing and monitoring physician performance expectations',
+ 'Facilitating feedback to physicians and other health care practitioners on performance and practices',
+ 'Coordinating activities as the Medical Director with other healthcare professionals',
+ 'Acting as a liaison in a dispute over the appropriate care to a resident',
+ 'Assisting in developing, implementing and administering resident care policies, procedures and programs',
+ 'Providing professional guidance and consultation directly to supervisory personnel',
+ 'Participation in federal, state, local and other external survey matters',
+ "Activities related to the Facility's employee health screening program",
+ 'Establishing systems for reviewing the quality and appropriateness of clinical treatment plans',
+ "Participation in the Facility's planning or review committees",
+ "Activities related to and attendance at the Facility's QAPI committee meetings",
+ 'Educational activities with Facility staff, attending physicians, other healthcare professionals and/or the professional community on current standards of practice and resident care issues',
+ 'Interaction with other health care organizations providing rehabilitative and clinical care'
+];
+
+/* one tap = one line. code, default hours, printed narrative */
+const QUICK=[
+ {l:'QAPI committee',        c:12, h:1.0, d:'QAPI committee meeting'},
+ {l:'Care conference',       c:4,  h:0.5, d:'Resident care conference'},
+ {l:'Staff in-service',      c:13, h:0.5, d:'Staff education / in-service'},
+ {l:'Policy review',         c:6,  h:0.5, d:'Resident care policy and procedure review'},
+ {l:'Coverage / call',       c:1,  h:0.5, d:'Physician coverage and call schedule review'},
+ {l:'Clinical record review',c:10, h:0.5, d:'Review of clinical treatment plans'},
+ {l:'Practitioner feedback', c:3,  h:0.5, d:'Feedback to attending practitioners'},
+ {l:'Survey / regulatory',   c:8,  h:1.0, d:'Survey preparation and response'},
+ {l:'DON / staff consult',   c:7,  h:0.25,d:'Consultation with supervisory nursing staff'},
+ {l:'Infection control',     c:6,  h:0.5, d:'Infection control and antibiotic stewardship'},
+ {l:'Employee health',       c:9,  h:0.25,d:'Employee health screening program'},
+ {l:'Care dispute liaison',  c:5,  h:0.5, d:'Liaison in resident care dispute'}
+];
+
+const uid=()=>Math.random().toString(36).slice(2,10);
+
+const SEED_FACILITIES=[
+ 'Accel at Crystal Park','Edmond Healthcare','Emerald Midwest','Emerald Southwest',
+ 'Heritage Manor','Heritage Park','Heritage Skilled Nursing','Ignite Edmond',
+ 'Ignite Norman','Ignite OKC','Lodge at Brookline','Luxe Life','Meadowlake Estates',
+ 'Medical Park West','Midwest City Post Acute','Montevista','Noble','Oakhills'
+];
+
+function seed(){
+  const mdId=uid();
+  return {
+    user:'',
+    directors:[{id:mdId,name:'Kanwardeep Singh',title:'MD'}],
+    facilities:SEED_FACILITIES.map(n=>({
+      id:uid(), name:n, active:true,
+      administrator: n==='Montevista' ? 'Brooke Cress' : '',
+      directorId:   n==='Montevista' ? mdId : '',
+      rate:0, capHours:0
+    })),
+    records:[]
+  };
+}
+
+let db=store.read()||seed();
+let visit=blankVisit();
+let activeStop=0;
+
+function blankVisit(){
+  return { id:uid(), period:new Date().toISOString().slice(0,7), directorId:'', mdTitle:'', forms:[], physSig:null, savedAt:null };
+}
+function newForm(facilityId){
+  const f=db.facilities.find(x=>x.id===facilityId)||{};
+  return { facilityId, adminName:f.administrator||'', rate:f.rate||0, lines:[] };
+}
+function newLine(p){ return { id:uid(), code:p?p.c:'', detail:p?p.d:'', date:'', hours:p?p.h:'' }; }
+function persist(){ store.write(db); }
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=v=>'$'+(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const stamp=()=>new Date().toLocaleString('en-US',{year:'numeric',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+const facName=id=>{const f=db.facilities.find(x=>x.id===id);return f?f.name:'—'};
+function hint(id,m){const e=$(id);e.textContent=m;setTimeout(()=>{if(e.textContent===m)e.textContent=''},4000)}
+
+/* ============ tabs ============ */
+document.querySelectorAll('nav.tabs button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('nav.tabs button').forEach(x=>x.setAttribute('aria-selected','false'));
+  b.setAttribute('aria-selected','true');
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  $('tab-'+b.dataset.tab).classList.add('active');
+  if(b.dataset.tab==='saved') renderSaved();
+  if(b.dataset.tab==='registry') renderRegistry();
+}));
+
+/* ============ header ============ */
+function renderDirectorSelect(){
+  $('director').innerHTML='<option value="">Select…</option>'+
+    db.directors.map(d=>`<option value="${d.id}"${d.id===visit.directorId?' selected':''}>${esc(d.name)}</option>`).join('');
+  $('mdTitle').value=visit.mdTitle;
+  $('period').value=visit.period;
+}
+$('director').addEventListener('change',e=>{
+  visit.directorId=e.target.value;
+  const d=db.directors.find(x=>x.id===e.target.value);
+  if(d){ visit.mdTitle=d.title||''; $('mdTitle').value=visit.mdTitle; }
+  // auto-load the facilities this director covers
+  if(!visit.forms.length){
+    db.facilities.filter(f=>f.active&&f.directorId===visit.directorId).forEach(f=>visit.forms.push(newForm(f.id)));
+  }
+  renderStops(); renderForm(); renderSummary(); renderAddStop();
+});
+$('mdTitle').addEventListener('input',e=>visit.mdTitle=e.target.value);
+$('period').addEventListener('input',e=>{visit.period=e.target.value;renderForm()});
+
+$('copyLast').addEventListener('click',()=>{
+  if(!visit.directorId){hint('copyHint','Pick a medical director first.');return}
+  const prior=db.records.filter(r=>r.directorId===visit.directorId&&r.period<visit.period)
+                        .sort((a,b)=>b.period.localeCompare(a.period))[0];
+  if(!prior){hint('copyHint','No earlier record saved for this director yet.');return}
+  visit.forms=prior.forms.map(f=>({
+    facilityId:f.facilityId, adminName:f.adminName, rate:f.rate,
+    lines:f.lines.map(l=>({id:uid(),code:l.code,detail:l.detail,date:'',hours:l.hours}))
+  }));
+  activeStop=0; renderStops(); renderForm(); renderSummary(); renderAddStop();
+  hint('copyHint','Loaded '+prior.period+'. Dates cleared — set them below.');
+});
+
+/* ============ stops ============ */
+function renderAddStop(){
+  const used=visit.forms.map(f=>f.facilityId);
+  $('addStop').innerHTML='<option value="">Choose a facility…</option>'+
+    db.facilities.filter(f=>f.active&&!used.includes(f.id))
+      .map(f=>`<option value="${f.id}">${esc(f.name)}</option>`).join('');
+}
+$('addStop').addEventListener('change',e=>{
+  if(!e.target.value) return;
+  visit.forms.push(newForm(e.target.value));
+  activeStop=visit.forms.length-1;
+  renderStops(); renderForm(); renderSummary(); renderAddStop();
+  e.target.value='';
+});
+function renderStops(){
+  $('stops').innerHTML=visit.forms.map((f,i)=>{
+    const h=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
+    return `<button class="stop" aria-selected="${i===activeStop}" data-stop="${i}">
+      ${esc(facName(f.facilityId))}<span class="hrs">${h.toFixed(2)}h</span><span class="x" data-drop="${i}">×</span></button>`;
+  }).join('') || '<span class="hint">No facilities added yet. Pick the medical director above, or add one below.</span>';
+  $('stops').querySelectorAll('[data-stop]').forEach(b=>b.addEventListener('click',e=>{
+    if(e.target.dataset.drop!==undefined) return;
+    activeStop=+b.dataset.stop; renderStops(); renderForm();
+  }));
+  $('stops').querySelectorAll('[data-drop]').forEach(x=>x.addEventListener('click',e=>{
+    e.stopPropagation();
+    visit.forms.splice(+x.dataset.drop,1);
+    activeStop=Math.max(0,activeStop-1);
+    renderStops(); renderForm(); renderSummary(); renderAddStop();
+  }));
+}
+
+/* ============ the active form ============ */
+function daysInPeriod(){
+  const [y,m]=visit.period.split('-').map(Number);
+  return new Date(y,m,0).getDate();
+}
+function isoDay(d){ return visit.period+'-'+String(d).padStart(2,'0'); }
+function dow(d){ const [y,m]=visit.period.split('-').map(Number); return new Date(y,m-1,d).getDay(); }
+
+function renderForm(){
+  const area=$('formArea');
+  if(!visit.forms.length){ area.innerHTML=''; return; }
+  const f=visit.forms[activeStop];
+  const fac=db.facilities.find(x=>x.id===f.facilityId)||{};
+  const nDays=daysInPeriod();
+
+  area.innerHTML=`
+  <div class="doc"><div class="doc-body">
+    <h2 class="sec"><span class="n">03</span>${esc(facName(f.facilityId))}</h2>
+
+    <div class="grid g3" style="margin-bottom:18px">
+      <label class="f"><span>Administrator</span><input type="text" id="fAdmin" value="${esc(f.adminName)}"></label>
+      <label class="f"><span>Hourly fee</span><input type="number" step="0.01" min="0" id="fRate" value="${f.rate||''}"></label>
+      <label class="f"><span>Monthly cap (hrs)</span><input type="number" step="0.5" min="0" id="fCap" value="${fac.capHours||''}"></label>
+    </div>
+
+    <div class="chips">${QUICK.map((q,i)=>
+      `<button class="chip-add" data-q="${i}"><b>${esc(q.l)}</b><em>code ${q.c} · ${q.h}h</em></button>`).join('')}
+      <button class="chip-add" data-q="blank"><b>Something else</b><em>blank line</em></button>
+    </div>
+    <p class="hint">Tap an activity to add a line, then set the day it happened.</p>
+
+    <div id="lines" style="margin-top:16px"></div>
+
+    <div class="totals">
+      <div class="tot"><div class="k">Hours</div><div class="v" id="fHours">0.00</div></div>
+      <div class="tot"><div class="k">Value</div><div class="v" id="fValue">$0.00</div></div>
+    </div>
+    <div id="fFlags"></div>
+  </div></div>`;
+
+  $('fAdmin').addEventListener('input',e=>{f.adminName=e.target.value;renderSummary()});
+  $('fRate').addEventListener('input',e=>{f.rate=parseFloat(e.target.value||0);renderLines();recalc()});
+  $('fCap').addEventListener('input',e=>{
+    const fc=db.facilities.find(x=>x.id===f.facilityId);
+    if(fc){fc.capHours=parseFloat(e.target.value||0);persist()} recalc();
+  });
+  area.querySelectorAll('[data-q]').forEach(b=>b.addEventListener('click',()=>{
+    const q=b.dataset.q==='blank'?null:QUICK[+b.dataset.q];
+    f.lines.push(newLine(q));
+    renderLines(); recalc();
+  }));
+  renderLines(); recalc();
+
+  function renderLines(){
+    const box=$('lines');
+    if(!f.lines.length){ box.innerHTML='<div class="empty-state">No activity logged for this facility yet.</div>'; return; }
+    box.innerHTML=f.lines.map((l,i)=>`
+      <div class="line" data-i="${i}">
+        <div class="wide">
+          <select data-k="code" style="margin-bottom:5px">
+            <option value="">Service code…</option>
+            ${SERVICE_CODES.map((c,n)=>`<option value="${n+1}"${String(l.code)===String(n+1)?' selected':''}>${n+1} — ${esc(c.length>58?c.slice(0,57)+'…':c)}</option>`).join('')}
+          </select>
+          <input type="text" data-k="detail" value="${esc(l.detail)}" placeholder="Detail (optional)">
+        </div>
+        <div><input type="date" data-k="date" value="${esc(l.date)}"></div>
+        <div class="stepper">
+          <button data-step="-1" data-i="${i}" aria-label="less">−</button>
+          <input type="number" step="0.25" min="0" data-k="hours" value="${esc(l.hours)}" placeholder="0.00">
+          <button data-step="1" data-i="${i}" aria-label="more">+</button>
+        </div>
+        <div class="val">${money((parseFloat(l.hours)||0)*(parseFloat(f.rate)||0))}</div>
+        <div><button class="rowdel" data-del="${i}">×</button></div>
+        <div class="wide">
+          <div class="datestrip">${Array.from({length:nDays},(_,k)=>{
+            const d=k+1, w=[0,6].includes(dow(d));
+            return `<button class="dchip${w?' weekend':''}" data-day="${d}" data-i="${i}" aria-pressed="${l.date===isoDay(d)}">${d}</button>`;
+          }).join('')}</div>
+        </div>
+      </div>`).join('');
+
+    box.querySelectorAll('[data-k]').forEach(el=>el.addEventListener('input',e=>{
+      const i=+e.target.closest('.line').dataset.i;
+      f.lines[i][e.target.dataset.k]=e.target.value;
+      if(e.target.dataset.k==='hours'){
+        e.target.closest('.line').querySelector('.val').textContent=money((parseFloat(e.target.value)||0)*(parseFloat(f.rate)||0));
+      }
+      recalc();
+    }));
+    box.querySelectorAll('[data-day]').forEach(b=>b.addEventListener('click',()=>{
+      const i=+b.dataset.i;
+      f.lines[i].date=isoDay(+b.dataset.day);
+      renderLines(); recalc();
+    }));
+    box.querySelectorAll('[data-step]').forEach(b=>b.addEventListener('click',()=>{
+      const i=+b.dataset.i;
+      const cur=parseFloat(f.lines[i].hours)||0;
+      f.lines[i].hours=Math.max(0,+(cur+0.25*(+b.dataset.step)).toFixed(2));
+      renderLines(); recalc();
+    }));
+    box.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>{
+      f.lines.splice(+b.dataset.del,1); renderLines(); recalc();
+    }));
+  }
+
+  function recalc(){
+    const h=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
+    $('fHours').textContent=h.toFixed(2);
+    $('fValue').textContent=money(h*(parseFloat(f.rate)||0));
+    const msgs=[];
+    const cap=(db.facilities.find(x=>x.id===f.facilityId)||{}).capHours||0;
+    if(cap>0&&h>cap) msgs.push(['stop',`Total hours (${h.toFixed(2)}) exceed the ${cap}-hour monthly cap for ${esc(facName(f.facilityId))}. Hours over cap are generally not payable without a written amendment.`]);
+    const nd=f.lines.filter(l=>(parseFloat(l.hours)||0)>0&&!l.date).length;
+    if(nd) msgs.push(['warn',`${nd} line${nd>1?'s need':' needs'} a date of service.`]);
+    const nc=f.lines.filter(l=>(parseFloat(l.hours)||0)>0&&!l.code).length;
+    if(nc) msgs.push(['warn',`${nc} line${nc>1?'s need':' needs'} a service code.`]);
+    if(!parseFloat(f.rate)) msgs.push(['warn','No hourly fee set for this facility, so values calculate to zero.']);
+    $('fFlags').innerHTML=msgs.map(([k,m])=>`<div class="flag ${k}"><span class="ic">${k==='stop'?'✕':'!'}</span><span>${m}</span></div>`).join('');
+    renderStops(); renderSummary();
+  }
+}
+
+/* ============ visit summary ============ */
+function visitTotals(){
+  let h=0,v=0;
+  visit.forms.forEach(f=>{
+    const fh=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
+    h+=fh; v+=fh*(parseFloat(f.rate)||0);
+  });
+  return {h,v};
+}
+function renderSummary(){
+  const el=$('visitSummary');
+  if(!visit.forms.length){ el.innerHTML='<div class="empty-state">Nothing to certify yet.</div>'; return; }
+  const t=visitTotals();
+  el.innerHTML=`<div style="overflow-x:auto"><table class="reg">
+    <tr><th>Facility</th><th>Administrator</th><th class="r">Hours</th><th class="r">Value</th></tr>
+    ${visit.forms.map(f=>{
+      const h=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
+      return `<tr><td>${esc(facName(f.facilityId))}</td><td>${esc(f.adminName||'—')}</td>
+        <td class="r val">${h.toFixed(2)}</td><td class="r val">${money(h*(parseFloat(f.rate)||0))}</td></tr>`;
+    }).join('')}
+    <tr><td colspan="2" style="font-weight:600">${visit.forms.length} form${visit.forms.length>1?'s':''}</td>
+      <td class="r val" style="font-weight:600">${t.h.toFixed(2)}</td>
+      <td class="r val" style="font-weight:600">${money(t.v)}</td></tr>
+  </table></div>
+  ${visit.physSig?`<div class="flag ok"><span class="ic">✓</span><span>Signed ${esc(visit.physSig.ts)} — covers all ${visit.forms.length} form${visit.forms.length>1?'s':''} above.</span></div>`:''}`;
+}
+
+/* ============ certify ============ */
+let padCtx=null,drawing=false,hasInk=false;
+$('certify').addEventListener('click',()=>{
+  if(!visit.forms.length){hint('visitHint','Add at least one facility.');return}
+  if(!visit.directorId){hint('visitHint','Pick a medical director.');return}
+  const d=db.directors.find(x=>x.id===visit.directorId);
+  const t=visitTotals();
+  $('certList').innerHTML=`<table class="reg">
+    <tr><th>Certifying</th><th class="r">Hours</th><th class="r">Value</th></tr>
+    ${visit.forms.map(f=>{
+      const h=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
+      return `<tr><td>${esc(facName(f.facilityId))} · ${esc(visit.period)}</td>
+        <td class="r val">${h.toFixed(2)}</td><td class="r val">${money(h*(parseFloat(f.rate)||0))}</td></tr>`;
+    }).join('')}
+    <tr><td style="font-weight:600">Total</td><td class="r val" style="font-weight:600">${t.h.toFixed(2)}</td>
+    <td class="r val" style="font-weight:600">${money(t.v)}</td></tr>
+  </table>
+  <div style="padding:12px 14px;font-family:var(--serif);font-size:15px;line-height:1.45;border-top:1px solid var(--rule)">
+    I certify that this time report is a true and accurate record of Physician's services as Medical Director.
+    <div style="font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-top:8px">${esc(d?d.name:'')}${visit.mdTitle?', '+esc(visit.mdTitle):''}</div>
+  </div>`;
+  $('padStamp').textContent='Will be stamped: '+stamp();
+  $('padModal').classList.add('open');
+  setTimeout(setupPad,30);
+});
+function setupPad(){
+  const c=$('padCanvas'), r=c.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  c.width=r.width*dpr; c.height=r.height*dpr;
+  padCtx=c.getContext('2d'); padCtx.scale(dpr,dpr);
+  padCtx.lineWidth=2.2; padCtx.lineCap='round'; padCtx.lineJoin='round'; padCtx.strokeStyle='#12161c';
+  padCtx.clearRect(0,0,r.width,r.height); hasInk=false;
+}
+(function(){
+  const c=$('padCanvas');
+  const pos=e=>{const r=c.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top]};
+  c.addEventListener('pointerdown',e=>{drawing=true;hasInk=true;c.setPointerCapture(e.pointerId);const[x,y]=pos(e);padCtx.beginPath();padCtx.moveTo(x,y)});
+  c.addEventListener('pointermove',e=>{if(!drawing)return;const[x,y]=pos(e);padCtx.lineTo(x,y);padCtx.stroke()});
+  ['pointerup','pointerleave','pointercancel'].forEach(ev=>c.addEventListener(ev,()=>drawing=false));
+})();
+$('padClear').addEventListener('click',setupPad);
+$('padCancel').addEventListener('click',()=>$('padModal').classList.remove('open'));
+$('padApply').addEventListener('click',()=>{
+  if(!hasInk) return;
+  visit.physSig={data:$('padCanvas').toDataURL('image/png'),ts:stamp(),by:db.user||'',
+                 covers:visit.forms.map(f=>facName(f.facilityId))};
+  visit.savedAt=stamp();
+  const i=db.records.findIndex(r=>r.id===visit.id);
+  const copy=JSON.parse(JSON.stringify(visit));
+  if(i>=0) db.records[i]=copy; else db.records.unshift(copy);
+  persist();
+  $('padModal').classList.remove('open');
+  renderSummary();
+  hint('visitHint','Signed and saved. Print the forms when ready.');
+});
+
+$('newVisit').addEventListener('click',()=>{
+  visit=blankVisit(); activeStop=0;
+  renderDirectorSelect(); renderStops(); renderForm(); renderSummary(); renderAddStop();
+});
+
+/* ============ print ============ */
+$('printAll').addEventListener('click',()=>{ buildPrint(visit); window.print(); });
+function buildPrint(v){
+  const d=db.directors.find(x=>x.id===v.directorId)||{};
+  const per=(()=>{ if(!v.period) return ''; const [y,m]=v.period.split('-');
+    return new Date(y,m-1,1).toLocaleString('en-US',{month:'long',year:'numeric'}); })();
+  $('printArea').innerHTML=v.forms.map(f=>{
+    const h=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);
+    const val=h*(parseFloat(f.rate)||0);
+    const rows=f.lines.map(l=>{
+      const lv=(parseFloat(l.hours)||0)*(parseFloat(f.rate)||0);
+      const desc=(l.code?l.code+'. ':'')+(l.detail||(l.code?SERVICE_CODES[l.code-1]:''));
+      const dt=l.date?l.date.split('-').slice(1).join('/')+'/'+l.date.split('-')[0]:'';
+      return `<tr><td>${esc(desc)}</td><td style="text-align:center">${esc(dt)}</td>
+        <td class="r">${(parseFloat(l.hours)||0).toFixed(2)}</td><td class="r">${money(lv)}</td></tr>`;
+    }).join('');
+    const pad=Array.from({length:Math.max(0,10-f.lines.length)},()=>'<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>').join('');
+    return `<div class="pf">
+      <h1>EXHIBIT A</h1><h2>MEDICAL DIRECTOR TIME RECORD</h2>
+      <div class="hdr">
+        Medical Director's Name: <u>${esc(d.name||'')}${v.mdTitle?', '+esc(v.mdTitle):''}</u>
+        &nbsp;&nbsp;Month / Year: <u>${esc(per)}</u><br>
+        Name of Facility: <u>${esc(facName(f.facilityId))}</u>
+        &nbsp;&nbsp;Administrator Name: <u>${esc(f.adminName||'')}</u>
+      </div>
+      <table>
+        <tr><th>DESCRIPTION OF SERVICES PROVIDED<br>(Service codes may be substituted for narrative)</th>
+            <th>DATE OF SERVICE</th><th>TIME EXPENDED</th><th>VALUE (TIME EXPENDED X HOURLY FEE)</th></tr>
+        ${rows}${pad}
+        <tr><td style="text-align:right;font-weight:bold">TOTAL</td><td></td>
+            <td class="r"><b>${h.toFixed(2)}</b></td><td class="r"><b>${money(val)}</b></td></tr>
+      </table>
+      <div class="codes"><b>Service Codes:</b><br>
+        ${SERVICE_CODES.map((c,i)=>`${i+1}. ${esc(c)}`).join('<br>')}
+      </div>
+      <p class="cert">I certify that this time report is a true and accurate record of Physician's services as Medical Director.</p>
+      <div class="sigblk">
+        <div><b>Physician:</b><br><br>
+          Signature: ${v.physSig?`<img src="${v.physSig.data}" alt="signature">`:'________________________'}<br>
+          Name: ${esc(d.name||'')}<br>Title: ${esc(v.mdTitle||'')}<br>Date: ${v.physSig?esc(v.physSig.ts):'____________'}
+          ${v.physSig?`<div class="stamp">Signed electronically ${esc(v.physSig.ts)}. This signature certifies ${v.physSig.covers.length} time record(s) reviewed in one sitting: ${esc(v.physSig.covers.join('; '))}.</div>`:''}
+        </div>
+        <div><b>Reviewed/Approved by Administrator:</b><br><br>
+          Signature: ________________________<br>Name: ${esc(f.adminName||'')}<br>Date: ____________
+        </div>
+      </div>
+      <div class="foot">Medical Director Services Agreement/Exhibit A - Medical Director Time Record 7/2024</div>
+    </div>`;
+  }).join('');
+}
+
+/* ============ saved ============ */
+function renderSaved(){
+  const el=$('savedList');
+  if(!db.records.length){ el.innerHTML='<div class="empty-state">Nothing saved yet.</div>'; return; }
+  el.innerHTML=`<div style="overflow-x:auto"><table class="reg">
+    <tr><th>Period</th><th>Medical Director</th><th>Facilities</th><th class="r">Hours</th><th class="r">Value</th><th>Status</th><th></th></tr>
+    ${db.records.map(r=>{
+      const d=db.directors.find(x=>x.id===r.directorId);
+      let h=0,v=0; r.forms.forEach(f=>{const fh=f.lines.reduce((s,l)=>s+(parseFloat(l.hours)||0),0);h+=fh;v+=fh*(parseFloat(f.rate)||0)});
+      return `<tr><td class="val">${esc(r.period)}</td><td>${esc(d?d.name:'—')}</td>
+        <td>${r.forms.length}</td><td class="r val">${h.toFixed(2)}</td><td class="r val">${money(v)}</td>
+        <td>${r.physSig?'<span class="pill on">Signed</span>':'<span class="pill">Unsigned</span>'}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn" data-open="${r.id}">Open</button>
+          <button class="btn" data-print="${r.id}">Print</button></td></tr>`;
+    }).join('')}
+  </table></div>`;
+  el.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>{
+    visit=JSON.parse(JSON.stringify(db.records.find(x=>x.id===b.dataset.open)));
+    activeStop=0; renderDirectorSelect(); renderStops(); renderForm(); renderSummary(); renderAddStop();
+    document.querySelector('nav.tabs button[data-tab="visit"]').click();
+    window.scrollTo({top:0,behavior:'smooth'});
+  }));
+  el.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',()=>{
+    buildPrint(db.records.find(x=>x.id===b.dataset.print)); window.print();
+  }));
+}
+
+/* ============ registry ============ */
+function renderRegistry(){
+  $('facTable').innerHTML=`
+    <tr><th>Facility</th><th>Administrator</th><th>Medical Director</th><th class="r">Hourly fee</th><th class="r">Cap (hrs)</th><th>Active</th><th></th></tr>
+    ${db.facilities.map(f=>`<tr data-f="${f.id}">
+      <td><input type="text" data-fk="name" value="${esc(f.name)}"></td>
+      <td><input type="text" data-fk="administrator" value="${esc(f.administrator)}"></td>
+      <td><select data-fk="directorId"><option value="">—</option>
+        ${db.directors.map(d=>`<option value="${d.id}"${d.id===f.directorId?' selected':''}>${esc(d.name)}</option>`).join('')}
+      </select></td>
+      <td class="r"><input type="number" step="0.01" data-fk="rate" value="${f.rate||''}"></td>
+      <td class="r"><input type="number" step="0.5" data-fk="capHours" value="${f.capHours||''}"></td>
+      <td><input type="checkbox" data-fk="active"${f.active?' checked':''}></td>
+      <td style="text-align:right"><button class="rowdel" data-delf="${f.id}">×</button></td>
+    </tr>`).join('')}`;
+  $('facTable').querySelectorAll('[data-fk]').forEach(el=>el.addEventListener('input',e=>{
+    const f=db.facilities.find(x=>x.id===e.target.closest('tr').dataset.f);
+    const k=e.target.dataset.fk;
+    f[k]= k==='active' ? e.target.checked : (k==='rate'||k==='capHours') ? parseFloat(e.target.value||0) : e.target.value;
+    persist(); renderAddStop();
+  }));
+  $('facTable').querySelectorAll('[data-delf]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Remove this facility? Saved records that reference it will show a dash.')) return;
+    db.facilities=db.facilities.filter(x=>x.id!==b.dataset.delf); persist(); renderRegistry(); renderAddStop();
+  }));
+
+  $('mdTable').innerHTML=`
+    <tr><th>Name</th><th>Credential</th><th>Facilities covered</th><th></th></tr>
+    ${db.directors.map(d=>`<tr data-d="${d.id}">
+      <td><input type="text" data-dk="name" value="${esc(d.name)}"></td>
+      <td><input type="text" data-dk="title" value="${esc(d.title)}" placeholder="MD"></td>
+      <td class="val">${db.facilities.filter(f=>f.directorId===d.id).length}</td>
+      <td style="text-align:right"><button class="rowdel" data-deld="${d.id}">×</button></td>
+    </tr>`).join('')}`;
+  $('mdTable').querySelectorAll('[data-dk]').forEach(el=>el.addEventListener('input',e=>{
+    const d=db.directors.find(x=>x.id===e.target.closest('tr').dataset.d);
+    d[e.target.dataset.dk]=e.target.value; persist(); renderDirectorSelect();
+  }));
+  $('mdTable').querySelectorAll('[data-deld]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Remove this medical director?')) return;
+    db.directors=db.directors.filter(x=>x.id!==b.dataset.deld); persist(); renderRegistry(); renderDirectorSelect();
+  }));
+}
+$('addFacility').addEventListener('click',()=>{
+  db.facilities.push({id:uid(),name:'New facility',active:true,administrator:'',directorId:'',rate:0,capHours:0});
+  persist(); renderRegistry(); renderAddStop();
+});
+$('addMd').addEventListener('click',()=>{
+  db.directors.push({id:uid(),name:'New medical director',title:'MD'});
+  persist(); renderRegistry(); renderDirectorSelect();
+});
+
+/* ============ data ============ */
+$('userName').addEventListener('input',e=>{db.user=e.target.value;persist()});
+$('exportJson').addEventListener('click',()=>{
+  const b=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(b);
+  a.download='md_time_records_'+new Date().toISOString().slice(0,10)+'.json'; a.click();
+});
+$('importJson').addEventListener('click',()=>$('importFile').click());
+$('importFile').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ try{
+      const inc=JSON.parse(rd.result);
+      if(!inc.facilities||!inc.directors) throw 0;
+      db=inc; persist(); visit=blankVisit(); boot(); alert('Backup imported.');
+    }catch(err){ alert('That file is not a backup from this tool.') } };
+  rd.readAsText(f);
+});
+$('wipe').addEventListener('click',()=>{
+  if(!confirm('Erase everything in this browser? This cannot be undone.')) return;
+  db=seed(); persist(); visit=blankVisit(); boot();
+});
+
+/* ============ boot ============ */
+function boot(){
+  $('codeList').innerHTML=SERVICE_CODES.map(c=>`<li>${esc(c)}</li>`).join('');
+  $('userName').value=db.user||'';
+  renderDirectorSelect(); renderAddStop(); renderStops(); renderForm(); renderSummary(); renderRegistry();
+  $('storageFlag').innerHTML=storageOK?'':
+    '<div class="flag warn"><span class="ic">!</span><span>This browser is blocking local storage, so data will disappear when the tab closes. Export a backup before you leave.</span></div>';
+}
+boot();
+</script>
+</body>
+</html>
