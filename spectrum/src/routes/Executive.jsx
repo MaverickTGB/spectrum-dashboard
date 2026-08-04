@@ -7,6 +7,7 @@ import { signOut } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 import { supabase } from "../lib/supabase.js";
 import { QapiTab, QapiFacilityPanel } from "./Qapi.jsx";
+import { AnalysisTab } from "./Analysis.jsx";
 import { ScopeProvider, ScopeSelector, ScopeBanner, useScope, applyScope } from "../lib/scope.jsx";
 
 /* ————————————————————— Spectrum design tokens ————————————————————— */
@@ -617,8 +618,8 @@ function ExecutiveInner() {
   const { orgId, scoped } = useScope();
   const data = useMemo(() => applyScope(rawData, orgId), [rawData, orgId]);
   const tabs = scoped
-    ? ["Overview", "Facilities", "RTA", "QAPI"]
-    : ["Overview", "Facilities", "RTA", "QAPI", "Team", "Financials"];
+     ? ["Overview", "Facilities", "RTA", "Analysis", "QAPI"]
+     : ["Overview", "Facilities", "RTA", "Analysis", "QAPI", "Team", "Financials"];
   useEffect(() => { if (!tabs.includes(tab)) setTab("Overview"); }, [scoped]);
 
   useEffect(() => {
@@ -711,6 +712,8 @@ function ExecutiveInner() {
             {tab === "Overview" && <OverviewTab data={data} month={month} goToFacility={goToFacility} />}
             {tab === "Facilities" && <FacilitiesTab data={data} selectedName={selectedName} setSelectedName={setSelectedName} month={month} />}
             {tab === "RTA" && <RtaTab data={data} month={month} />}
+            {tab === "RTA" && <RtaTab data={data} month={month} />}
+            {tab === "Analysis" && <AnalysisTab />}
             {tab === "QAPI" && <QapiTab />}
             {tab === "Team" && <TeamTab data={data} month={month} />}
             {tab === "Financials" && (
