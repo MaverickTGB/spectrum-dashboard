@@ -191,6 +191,7 @@ export function HeatmapTab({ data, month, goToFacility }) {
 
   return (
     <>
+      <div className="vm-secbar"><span className="vm-tick2" /><h2>Portfolio heatmap</h2><span className="vm-secright">{facilities.length} facilities · {month ? month.slice(0, 7) : ""}</span></div>
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginBottom: 28 }}>
         <Kpi label="Need attention" value={needAttention} sub="Facilities red on ≥1 metric" good={needAttention === 0} />
         <Kpi label="Red cells" value={totalReds} sub="Across all dimensions" good={totalReds === 0} />
