@@ -7,6 +7,7 @@ import { signOut } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 import { supabase } from "../lib/supabase.js";
 import { QapiTab, QapiFacilityPanel } from "./Qapi.jsx";
+import { HeatmapTab } from "./Heatmap.jsx";
 import { AnalysisTab } from "./Analysis.jsx";
 import { ScopeProvider, ScopeSelector, ScopeBanner, useScope, applyScope } from "../lib/scope.jsx";
 
@@ -72,6 +73,35 @@ const PulseLine = ({ color = T.teal, width = 46 }) => (
       fill="none" stroke={color} strokeWidth="1.6" strokeLinejoin="round" />
   </svg>
 );
+// Tiny inline monthly trend line for table rows.
+const Sparkline = ({ values = [], width = 84, height = 22, stroke = T.teal }) => {
+  const pts = values.filter((v) => v != null).map(Number);
+  if (pts.length < 2) return <span style={{ fontSize: 11, color: T.inkSoft }}>—</span>;
+  const min = Math.min(...pts), max = Math.max(...pts), span = max - min || 1;
+  const step = width / (pts.length - 1);
+  const d = pts.map((v, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)} ${(height - ((v - min) / span) * height).toFixed(1)}`).join(" ");
+  const last = pts[pts.length - 1];
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden style={{ display: "block" }}>
+      <path d={d} fill="none" stroke={stroke} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={width} cy={height - ((last - min) / span) * height} r="2" fill={stroke} />
+    </svg>
+  );
+};
+// Month-over-month delta chip: arrow + magnitude, coloured by direction.
+const MoMDelta = ({ delta, unit = "", higherBetter = true }) => {
+  if (delta == null) return null;
+  const flat = Math.abs(delta) < 0.05;
+  const up = delta > 0;
+  const good = flat ? true : higherBetter ? up : !up;
+  const color = flat ? T.inkSoft : good ? T.teal : T.alert;
+  const arrow = flat ? "→" : up ? "▲" : "▼";
+  return (
+    <span className="ed-num" style={{ color, fontSize: 11 }}>
+      {arrow} {Math.abs(delta).toLocaleString(undefined, { maximumFractionDigits: 1 })}{unit} MoM
+    </span>
+  );
+};
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const monthLabel = (iso) => { const [y,m] = iso.split("-"); return `${MONTHS[+m-1]} ${y}`; };
@@ -153,7 +183,7 @@ function OverviewTab({ data, month, goToFacility }) {
   return (
     <>
      <section className={`grid grid-cols-2 ${scoped ? "md:grid-cols-4" : "md:grid-cols-5"} gap-4`}>
-        <Kpi label="Avg daily census" value={n0(kpis.totalCensus)} sub={`${facilities.length} facilities · Spectrum patients`} />
+        <Kpi label="Avg daily census" value={n0(kpis.totalCensus)} sub={<>{facilities.length} facilities{data.mom?.census ? <> · <MoMDelta delta={data.mom.census.delta} /></> : null}</>} />
         <Kpi label="Building census" value={n0(kpis.totalBuilding)} sub={hasGrowth ? "Total patients in buildings" : "No building data this month"} good={hasGrowth} />
         <Kpi label="Capture rate" value={kpis.captureRate == null ? "—" : `${kpis.captureRate}%`} sub={hasGrowth ? "Spectrum share of buildings" : "Needs building data"} good={hasGrowth} />
         <Kpi label="Growth opportunity" value={n0(kpis.totalOpportunity)} sub={hasGrowth ? "Non-Spectrum patients" : "Needs building data"} good={false} />
@@ -266,7 +296,7 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
         <table className="w-full" style={{ borderCollapse: "collapse", minWidth: 860 }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${T.hairline}`, background: "#F7FAFB" }}>
-              {["Facility", "Spectrum census", "Building census", "Non-Spectrum", "Capture", "SNF", "LTC"].map((h) => (
+              {["Facility", "Spectrum census", "Building census", "Non-Spectrum", "Capture", "SNF", "LTC", "6-mo trend"].map((h) => (
                 <th key={h} className="text-left py-3" style={{ fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 600, paddingRight: 16, paddingLeft: h === "Facility" ? 20 : 0 }}>{h}</th>
               ))}
             </tr>
@@ -283,6 +313,7 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
                   <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: cap == null ? T.inkSoft : toneFrom(cap, th.capture), fontWeight: 600 }}>{cap == null ? "—" : cap + "%"}</td>
                   <td className="ed-num py-3 pr-4" style={{ fontSize: 12.5, color: T.inkSoft }}>{n1(f.snf)}</td>
                   <td className="ed-num py-3 pr-4" style={{ fontSize: 12.5, color: T.inkSoft }}>{n1(f.ltc)}</td>
+                  <td className="py-3 pr-4"><Sparkline values={f.mSeries} /></td>
                 </tr>
               );
             })}
@@ -508,30 +539,34 @@ function lastDayOfMonth(ym) {
   const [y, m] = ym.split("-").map(Number);
   return `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
 }
+function monthsAgoStart(ym, n) {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(y, m - 1 - n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
 
 async function loadMonthData(monthIso) {
   const ym = ymKey(monthIso);          // normalize 2026-06-01 -> 2026-06
   const start = `${ym}-01`;
   const end = lastDayOfMonth(ym);
-  const [facs, fm, fg, rta, dc, lm, cms, th] = await Promise.all([
+  const trailStart = monthsAgoStart(ym, 5);   // 6-month window ending at `start`
+  const [facs, fm, fg, rta, dc, lm, cms, th, tr] = await Promise.all([
     supabase.from("facilities").select("id, name, code, ccn, org_id"),
     supabase.from("facility_monthly").select("facility_id, avg_spectrum_census, avg_snf, avg_ltc").eq("month", start),
     supabase.from("facility_growth").select("facility_id, avg_building_census, avg_non_spectrum").eq("month", start),
     supabase.from("rta_monthly").select("facility_id, admits, rtas, ltc_admits, ltc_rtas, er_visits").eq("month", start),
     supabase.from("daily_census").select("facility_id, census_date, spectrum_census").gte("census_date", start).lte("census_date", end),
     supabase.from("liaison_monthly").select("hours, ot_hours, notes_count, liaisons(name)").eq("month", start),
-supabase.from("facility_cms").select("*"),
+    supabase.from("facility_cms").select("*"),
     supabase.from("metric_thresholds").select("metric_key, label, unit, direction, target, amber, red, benchmark_national, benchmark_state, benchmark_state_code, benchmark_period, benchmark_source, provisional").eq("active", true),
+    supabase.from("facility_monthly").select("facility_id, month, avg_spectrum_census").gte("month", trailStart).lte("month", start),
   ]);
-  const err = facs.error || fm.error || fg.error || rta.error || dc.error || lm.error || cms.error || th.error;
+  const err = facs.error || fm.error || fg.error || rta.error || dc.error || lm.error || cms.error || th.error || tr.error;
   if (err) throw err;
-
   const cmsById = {}; (cms.data || []).forEach((c) => { cmsById[c.facility_id] = c; });
   const rtaById = {}; (rta.data || []).forEach((r) => { rtaById[r.facility_id] = r; });
-
   const facById = {};
   (facs.data || []).forEach((f) => { facById[f.id] = f; });
-
   const byId = {};
   (fm.data || []).forEach((r) => {
     byId[r.facility_id] = { facility_id: r.facility_id, name: facById[r.facility_id]?.name || `#${r.facility_id}`,
@@ -541,7 +576,6 @@ supabase.from("facility_cms").select("*"),
     const o = byId[r.facility_id] || (byId[r.facility_id] = { facility_id: r.facility_id, name: facById[r.facility_id]?.name || `#${r.facility_id}`, census: null, snf: null, ltc: null });
     o.building = r.avg_building_census; o.nonSpec = r.avg_non_spectrum;
   });
-
   // daily per facility + portfolio trend
   const dailyByFac = {}, byDate = {};
   (dc.data || []).forEach((r) => {
@@ -553,11 +587,10 @@ supabase.from("facility_cms").select("*"),
     o.trendDates = arr.map((x) => x[0]); o.trend = arr.map((x) => x[1]);
   });
   const portfolioTrend = Object.keys(byDate).sort().map((d) => ({ d: shortDay(d), census: Math.round(byDate[d]) }));
-
   Object.values(byId).forEach((o) => {
     if (o.nonSpec == null && o.building != null && o.census != null) o.nonSpec = Math.max(o.building - o.census, 0);
     o.opp = o.building && o.building > 0 && o.nonSpec != null ? Math.round((o.nonSpec / o.building) * 100) : null;
-   o.ccn = facById[o.facility_id]?.ccn || null;
+    o.ccn = facById[o.facility_id]?.ccn || null;
     o.org_id = facById[o.facility_id]?.org_id ?? null;
     o.cms = cmsById[o.facility_id] || null;
     const rr = rtaById[o.facility_id];
@@ -567,33 +600,43 @@ supabase.from("facility_cms").select("*"),
       ltcRate: rr.ltc_admits ? (rr.ltc_rtas / rr.ltc_admits) * 100 : null,
     } : null;
   });
-
+  // trailing monthly census series (sparklines) + portfolio MoM
+  const trailByFac = {}, monthTotals = {};
+  (tr.data || []).forEach((r) => {
+    (trailByFac[r.facility_id] = trailByFac[r.facility_id] || []).push([r.month, r.avg_spectrum_census]);
+    monthTotals[r.month] = (monthTotals[r.month] || 0) + (r.avg_spectrum_census || 0);
+  });
+  Object.values(byId).forEach((o) => {
+    const arr = (trailByFac[o.facility_id] || []).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    o.mSeries = arr.map((x) => (x[1] == null ? null : Number(x[1])));
+    o.mSeriesMonths = arr.map((x) => x[0]);
+  });
   const facilities = Object.values(byId).sort((a, b) => (b.census || 0) - (a.census || 0));
   const hasGrowth = (fg.data || []).length > 0;
-
   const sum = (arr, k) => arr.reduce((s, x) => s + (x[k] || 0), 0);
   const totalCensus = sum(facilities, "census");
   const totalBuilding = hasGrowth ? sum(facilities, "building") : null;
   const totalOpportunity = hasGrowth ? sum(facilities, "nonSpec") : null;
   const captureRate = totalBuilding ? Math.round((totalCensus / totalBuilding) * 1000) / 10 : null;
   const totalSnf = sum(facilities, "snf"), totalLtc = sum(facilities, "ltc");
-
+  const trailMonths = Object.keys(monthTotals).sort();
+  const curIdx = trailMonths.indexOf(start);
+  const prevKey = curIdx > 0 ? trailMonths[curIdx - 1] : null;
+  const mom = { census: prevKey != null ? { prev: monthTotals[prevKey], delta: totalCensus - monthTotals[prevKey] } : null };
   const liaisons = (lm.data || []).map((l) => ({
     name: l.liaisons?.name || "—", hours: l.hours, ot: l.ot_hours, notes: l.notes_count,
   })).sort((a, b) => (b.hours || 0) - (a.hours || 0));
   const hasLiaison = liaisons.length > 0;
   const liaisonNotes = liaisons.reduce((s, l) => s + (l.notes || 0), 0);
   const liaisonHrs = liaisons.reduce((s, l) => s + (l.hours || 0), 0);
-
   const rtaRows = (rta.data || []).map((r) => ({
     name: facById[r.facility_id]?.name || `#${r.facility_id}`,
     admits: r.admits, rtas: r.rtas, ltc_admits: r.ltc_admits, ltc_rtas: r.ltc_rtas, er: r.er_visits,
     snfRate: r.admits ? (r.rtas / r.admits) * 100 : null,
     ltcRate: r.ltc_admits ? (r.ltc_rtas / r.ltc_admits) * 100 : null,
   })).sort((a, b) => (b.snfRate ?? -1) - (a.snfRate ?? -1));
-
   return {
-    facilities, portfolioTrend, rta: rtaRows, liaisons, hasGrowth, hasLiaison,
+    facilities, portfolioTrend, rta: rtaRows, liaisons, hasGrowth, hasLiaison, mom,
     thresholds: Object.fromEntries((th.data || []).map((t) => [t.metric_key, t])),
     mixData: [{ type: "SNF", count: Math.round(totalSnf) }, { type: "LTC", count: Math.round(totalLtc) }],
     kpis: { totalCensus, totalBuilding, totalOpportunity, captureRate, liaisonNotes, liaisonHrs },
@@ -618,8 +661,8 @@ function ExecutiveInner() {
   const { orgId, scoped } = useScope();
   const data = useMemo(() => applyScope(rawData, orgId), [rawData, orgId]);
   const tabs = scoped
-     ? ["Overview", "Facilities", "RTA", "Analysis", "QAPI"]
-     : ["Overview", "Facilities", "RTA", "Analysis", "QAPI", "Team", "Financials"];
+     ? ["Overview", "Heatmap", "Facilities", "RTA", "Analysis", "QAPI"]
+     : ["Overview", "Heatmap", "Facilities", "RTA", "Analysis", "QAPI", "Team", "Financials"];
   useEffect(() => { if (!tabs.includes(tab)) setTab("Overview"); }, [scoped]);
 
   useEffect(() => {
@@ -710,8 +753,8 @@ function ExecutiveInner() {
         {!loading && !err && data && (
           <>
             {tab === "Overview" && <OverviewTab data={data} month={month} goToFacility={goToFacility} />}
+            {tab === "Heatmap" && <HeatmapTab data={data} month={month} goToFacility={goToFacility} />}
             {tab === "Facilities" && <FacilitiesTab data={data} selectedName={selectedName} setSelectedName={setSelectedName} month={month} />}
-            {tab === "RTA" && <RtaTab data={data} month={month} />}
             {tab === "RTA" && <RtaTab data={data} month={month} />}
             {tab === "Analysis" && <AnalysisTab />}
             {tab === "QAPI" && <QapiTab />}
