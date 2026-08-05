@@ -295,8 +295,20 @@ const vitalsCSS = `
   .vm-mini{font-size:10.5px;color:${T.inkSoft};}.vm-mini b{display:block;font-size:14px;color:${T.ink};font-weight:600;margin-top:1px;}
   .vm-openbtn{margin-top:12px;width:100%;background:${T.tealSoft};color:${T.teal};border:none;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;}
   .vm-openbtn:hover{background:#D3EAEC;}
+  .vm-skel{background:linear-gradient(90deg,rgba(255,255,255,.06) 25%,rgba(255,255,255,.15) 37%,rgba(255,255,255,.06) 63%);background-size:400% 100%;border-radius:6px;animation:vm-shimmer 1.4s ease infinite;}
+  .vm-skel-l{background:linear-gradient(90deg,#EEF3F4 25%,#E1EAEC 37%,#EEF3F4 63%);background-size:400% 100%;border-radius:6px;animation:vm-shimmer 1.4s ease infinite;}
+  @keyframes vm-shimmer{0%{background-position:100% 0;}100%{background-position:0 0;}}
+  .vm-bootsweep{position:absolute;left:0;top:0;bottom:0;width:130px;background:linear-gradient(90deg,transparent,rgba(55,180,190,.4),transparent);animation:vm-bootsweep 1.3s linear infinite;}
+  @keyframes vm-bootsweep{0%{transform:translateX(-150px);}100%{transform:translateX(900px);}}
+  .vm-secbar{display:flex;align-items:center;gap:10px;margin:26px 0 14px;border-bottom:2px solid ${T.teal};padding-bottom:8px;}
+  .vm-secbar .vm-tick2{width:10px;height:10px;border-radius:50%;background:${T.teal};box-shadow:0 0 0 3px ${T.tealSoft};flex:0 0 auto;}
+  .vm-secbar h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:${T.ink};font-weight:800;margin:0;}
+  .vm-secbar .vm-secright{margin-left:auto;font-size:11px;color:${T.inkSoft};font-family:'IBM Plex Mono',monospace;}
+  .vm-trow{cursor:pointer;transition:background 120ms ease;}
+  .vm-trow:hover{background:${T.tealSoft};}
   @media (max-width:900px){.vm-kgrid{grid-template-columns:1fr 1fr;}.vm-fgrid{grid-template-columns:1fr 1fr;}.vm-strip{grid-template-columns:1fr 1fr;}.vm-kcell + .vm-kcell{border-left:none;}}
-  @media (prefers-reduced-motion: reduce){.vm-heart,.vm-dot,.vm-ktick,.vm-alarmtag{animation:none !important;}}
+  @media (max-width:560px){.vm-kgrid{grid-template-columns:1fr;}.vm-fgrid{grid-template-columns:1fr;}.vm-strip{grid-template-columns:1fr;}.vm-lead .vm-kval{font-size:38px;}}
+  @media (prefers-reduced-motion: reduce){.vm-heart,.vm-dot,.vm-ktick,.vm-alarmtag,.vm-skel,.vm-skel-l,.vm-bootsweep{animation:none !important;}}
 `;
 
 /* ——— Vitals-monitor building blocks (canvas waveforms, decode counters, rings) ——— */
@@ -317,21 +329,32 @@ const CHW = {
 
 // A single live-scrolling waveform channel drawn on a canvas (ICU-monitor style:
 // persistent trace with a moving erase gap). Cleans up its rAF loop on unmount.
-function WaveCanvas({ type, color, lineW = 1.4, glow = null, glowBlur = 5, pxPerSec, beatPx, gap, mid, amp, style, className }) {
+function WaveCanvas({ type, color, lineW = 1.4, glow = null, glowBlur = 5, pxPerSec, beatPx, gap, mid, amp, style, className, label }) {
   const ref = useRef(null);
   useEffect(() => {
     const cv = ref.current; if (!cv) return;
     const ctx = cv.getContext("2d");
     const fn = waveFns[type] || waveFns.steady;
-    let W = 0, H = 0, d = 0, prevX = 0, prevY = 0, raf = 0, last = performance.now();
+    const reduce = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let W = 0, H = 0, d = 0, prevX = 0, prevY = 0, raf = 0, last = performance.now(), hidden = false;
+    const strokeStatic = () => {
+      ctx.clearRect(0, 0, W, H);
+      ctx.strokeStyle = color; ctx.lineWidth = lineW; ctx.lineJoin = "round"; ctx.lineCap = "round";
+      if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = glowBlur; } else { ctx.shadowBlur = 0; }
+      ctx.beginPath();
+      for (let x = 0; x <= W; x += 2) { const phase = (x / beatPx) % 1, y = H * mid - fn(phase) * (H * amp); if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+      ctx.stroke(); ctx.shadowBlur = 0;
+    };
     const resize = () => {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       W = cv.clientWidth; H = cv.clientHeight;
       cv.width = Math.max(1, Math.round(W * dpr)); cv.height = Math.max(1, Math.round(H * dpr));
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
       prevX = 0; prevY = H * mid; d = 0;
+      if (reduce && W && H) strokeStatic();
     };
     const loop = (now) => {
+      if (hidden) { raf = requestAnimationFrame(loop); return; }   // idle while tab hidden
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
       if (W && H) {
         d += pxPerSec * dt;
@@ -346,10 +369,13 @@ function WaveCanvas({ type, color, lineW = 1.4, glow = null, glowBlur = 5, pxPer
       }
       raf = requestAnimationFrame(loop);
     };
-    resize(); window.addEventListener("resize", resize); raf = requestAnimationFrame(loop);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
+    const onVis = () => { hidden = document.hidden; if (!hidden) last = performance.now(); };
+    resize(); window.addEventListener("resize", resize);
+    if (reduce) { strokeStatic(); }
+    else { document.addEventListener("visibilitychange", onVis); raf = requestAnimationFrame(loop); }
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); document.removeEventListener("visibilitychange", onVis); };
   }, [type, color, lineW, glow, glowBlur, pxPerSec, beatPx, gap, mid, amp]);
-  return <canvas ref={ref} className={className} style={style} />;
+  return <canvas ref={ref} className={className} style={style} aria-hidden="true" />;
 }
 
 // Number that "decodes" into place — digits scramble, then lock. Null -> em dash.
@@ -493,7 +519,7 @@ function FacilityCard({ f, qapiStatus, onOpen }) {
   const up = (f.delta ?? 0) >= 0;
   const qColor = qapiStatus === "green" ? T.teal : qapiStatus === "amber" ? T.amber : qapiStatus === "red" ? T.alert : T.inkSoft;
   return (
-    <div className="vm-fcard" onClick={() => setOpen((o) => !o)}>
+    <div className="vm-fcard" role="button" tabIndex={0} aria-expanded={open} aria-label={`${f.name}, ${n0(f.census)} census — toggle detail`} onClick={() => setOpen((o) => !o)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen((o) => !o); } }}>
       {f.delta != null && <span className="vm-pill" style={{ background: up ? T.tealSoft : "#FBEEEB", color: up ? T.teal : T.alert }}>{up ? "▲" : "▼"} {Math.abs(Math.round(f.delta))}</span>}
       <p className="vm-fname">{f.name}</p>
       <p className="vm-floc">{cap == null ? "census only" : `${cap}% capture`}</p>
@@ -509,6 +535,36 @@ function FacilityCard({ f, qapiStatus, onOpen }) {
           <div className="vm-mini">SNF / LTC<b className="ed-num">{n0(f.snf)} / {n0(f.ltc)}</b></div>
         </div>
         <button className="vm-openbtn" onClick={(e) => { e.stopPropagation(); onOpen(f.name); }}>Open facility →</button>
+      </div>
+    </div>
+  );
+}
+
+// Themed loading state — a monitor "warming up" instead of a bare "Loading…".
+function BootLoader({ month }) {
+  const skel = (w, h, mt) => <div className="vm-skel" style={{ width: w, height: h, marginTop: mt, borderRadius: 6 }} />;
+  return (
+    <div style={{ padding: "4px 0" }}>
+      <div className="vm-hero">
+        <div className="vm-gridbg" style={{ opacity: 1 }} />
+        <div className="vm-monbar">
+          <span className="vm-live"><span className="vm-dot" /> syncing portfolio{month ? ` · ${month}` : ""}</span>
+          <span className="vm-date">establishing feed…</span>
+        </div>
+        <div className="vm-ecgstrip"><div className="vm-ecglabel">acquiring signal</div><div className="vm-bootsweep" /></div>
+        <div className="vm-kgrid">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="vm-kcell">{skel("55%", 10, 14)}{skel("80%", 26, 14)}{skel("100%", 22, 16)}</div>
+          ))}
+        </div>
+      </div>
+      <div className="vm-strip" style={{ marginTop: 16 }}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="vm-chip">
+            <div className="vm-skel-l" style={{ width: 28, height: 28, borderRadius: 8, flex: "0 0 auto" }} />
+            <div style={{ flex: 1 }}><div className="vm-skel-l" style={{ width: "70%", height: 10, borderRadius: 6 }} /><div className="vm-skel-l" style={{ width: "90%", height: 8, borderRadius: 6, marginTop: 8 }} /></div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -623,7 +679,6 @@ function OverviewTab({ data, month, goToFacility }) {
 
   return (
     <>
-      <style>{vitalsCSS}</style>
       <VitalsHero channels={channels} bpm={bpm} admitsPerDay={admitsPerDay} beatPxMain={beatPxMain} monthText={monthLabel(month)} />
 
       {!scoped && <div style={{ marginTop: 16 }}><FreshnessStrip coverage={data.coverage} /></div>}
@@ -814,6 +869,7 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
 
   return (
     <>
+      <div className="vm-secbar"><span className="vm-tick2" /><h2>Facilities · roster &amp; detail</h2><span className="vm-secright">{facilities.length} facilities · {monthLabel(month)}</span></div>
       <div className="flex items-center gap-2" style={{ marginBottom: 20 }}>
         {["All", "With opportunity"].map((mk) => (
           <button key={mk} onClick={() => setFilter(mk)} className="ed-ui" style={{
@@ -967,7 +1023,7 @@ function FacilitiesTab({ data, selectedName, setSelectedName, month }) {
 
 
 /* ————————————————————— Tab: RTA ————————————————————— */
-function RtaTab({ data, month }) {
+function RtaTab({ data, month, goToFacility }) {
   const rows = data.rta;
   if (!rows.length) return <Empty>No return-to-acute data for {monthLabel(month)} yet.</Empty>;
   const tot = rows.reduce((a, r) => ({
@@ -975,22 +1031,23 @@ function RtaTab({ data, month }) {
     ltc_admits: a.ltc_admits + (r.ltc_admits || 0), ltc_rtas: a.ltc_rtas + (r.ltc_rtas || 0),
     er: a.er + (r.er || 0),
   }), { admits: 0, rtas: 0, ltc_admits: 0, ltc_rtas: 0, er: 0 });
-  const snfRate = tot.admits ? ((tot.rtas / tot.admits) * 100).toFixed(1) : "—";
-  const ltcRate = tot.ltc_admits ? ((tot.ltc_rtas / tot.ltc_admits) * 100).toFixed(1) : "—";
-const snfTh = data.thresholds?.["rta.snf"];
+  const snfRateNum = tot.admits ? (tot.rtas / tot.admits) * 100 : null;
+  const ltcRateNum = tot.ltc_admits ? (tot.ltc_rtas / tot.ltc_admits) * 100 : null;
+  const snfTh = data.thresholds?.["rta.snf"];
   const ltcTh = data.thresholds?.["rta.ltc_pct"];
   const rateColor = (r, th) => (r == null ? T.inkSoft : toneFrom(r, th));
 
   return (
     <>
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginBottom: 32 }}>
-        <Kpi label="SNF RTA rate" value={`${snfRate}%`} sub={`${tot.rtas} of ${tot.admits} SNF admits`} good={snfRate === "—" || (snfTh?.target != null && +snfRate <= Number(snfTh.target))} />
-        <Kpi label="LTC RTA rate" value={`${ltcRate}%`} sub={`${tot.ltc_rtas} of ${tot.ltc_admits} LTC admits`} good={ltcTh?.target != null ? (ltcRate === "—" || +ltcRate <= Number(ltcTh.target)) : true} />
-        <Kpi label="Total admissions" value={n0(tot.admits + tot.ltc_admits)} sub="SNF + LTC" />
-        <Kpi label="ER visits" value={n0(tot.er)} sub="Across portfolio" good={false} />
+      <div className="vm-secbar"><span className="vm-tick2" /><h2>Return-to-acute</h2><span className="vm-secright">{rows.length} facilities · {monthLabel(month)}</span></div>
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginBottom: 28 }}>
+        <Kpi tone={toneName(snfRateNum, snfTh)} label="SNF RTA rate" value={snfRateNum == null ? "—" : snfRateNum.toFixed(1) + "%"} sub={`${tot.rtas} of ${tot.admits} SNF admits · goal ${thNum(snfTh?.target) ?? "—"}%`} />
+        <Kpi tone={toneName(ltcRateNum, ltcTh)} label="LTC RTA rate" value={ltcRateNum == null ? "—" : ltcRateNum.toFixed(1) + "%"} sub={`${tot.ltc_rtas} of ${tot.ltc_admits} LTC admits`} />
+        <Kpi tone="muted" label="Total admissions" value={n0(tot.admits + tot.ltc_admits)} sub="SNF + LTC" />
+        <Kpi tone="muted" label="ER visits" value={n0(tot.er)} sub="Across portfolio" />
       </section>
 
-      <SectionLabel right={`${rows.length} facilities · ${monthLabel(month)}`}>Return-to-acute by facility</SectionLabel>
+      <SectionLabel right="Click a facility to drill in">Return-to-acute by facility</SectionLabel>
       <div className="ed-card" style={{ overflowX: "auto" }}>
         <table className="w-full" style={{ borderCollapse: "collapse", minWidth: 820 }}>
           <thead>
@@ -1002,11 +1059,11 @@ const snfTh = data.thresholds?.["rta.snf"];
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.name} style={{ borderBottom: `1px solid ${T.hairline}` }}>
+              <tr key={r.name} className="vm-trow" onClick={() => goToFacility && goToFacility(r.name)} title="Open facility" style={{ borderBottom: `1px solid ${T.hairline}` }}>
                 <td className="py-3 pr-4" style={{ fontSize: 13.5, fontWeight: 600, paddingLeft: 20 }}>{r.name}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{r.admits ?? "—"}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{r.rtas ?? "—"}</td>
-                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, fontWeight: 600, color: rateColor(r.snfRate, snfTh) }}>{r.snfRate == null ? "—" : r.snfRate.toFixed(1) + "%"}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, fontWeight: 600, color: rateColor(r.snfRate, snfTh) }}><span aria-hidden style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: rateColor(r.snfRate, snfTh), marginRight: 7, verticalAlign: "middle" }} />{r.snfRate == null ? "—" : r.snfRate.toFixed(1) + "%"}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{r.ltc_admits ?? "—"}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{r.ltc_rtas ?? "—"}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13, fontWeight: 600, color: rateColor(r.ltcRate, ltcTh) }}>{r.ltcRate == null ? "—" : r.ltcRate.toFixed(1) + "%"}</td>
@@ -1032,13 +1089,15 @@ function TeamTab({ data, month }) {
   const notes = liaisons.reduce((s, l) => s + (l.notes || 0), 0);
   const otTh = data.thresholds?.["liaison.ot_hours"];
   const otTotalTh = data.thresholds?.["liaison.ot_total"];
+  const otHot = otTotalTh?.amber != null && ot >= Number(otTotalTh.amber);
   return (
     <>
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginBottom: 32 }}>
-        <Kpi label="Liaison hours" value={n0(hrs)} sub={`${liaisons.length} liaisons`} />
-        <Kpi label="Overtime hours" value={n1(ot)} sub="Month to date" good={otTotalTh?.amber == null || ot < Number(otTotalTh.amber)} />
-        <Kpi label="Notes completed" value={notes} sub="Across the team" />
-        <Kpi label="Notes per hour" value={hrs ? (notes / hrs).toFixed(2) : "—"} sub="Team average" />
+      <div className="vm-secbar"><span className="vm-tick2" /><h2>Team · liaison performance</h2><span className="vm-secright">{monthLabel(month)}</span></div>
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginBottom: 28 }}>
+        <Kpi tone="muted" label="Liaison hours" value={n0(hrs)} sub={`${liaisons.length} liaisons`} />
+        <Kpi tone={otHot ? "watch" : "ok"} label="Overtime hours" value={n1(ot)} sub="Month to date" />
+        <Kpi tone="muted" label="Notes completed" value={notes} sub="Across the team" />
+        <Kpi tone="ok" label="Notes per hour" value={hrs ? (notes / hrs).toFixed(2) : "—"} sub="Team average" />
       </section>
       <SectionLabel right={`Monthly totals · ${monthLabel(month)}`}>Liaison performance</SectionLabel>
       <div className="ed-card" style={{ overflowX: "auto" }}>
@@ -1052,7 +1111,7 @@ function TeamTab({ data, month }) {
           </thead>
           <tbody>
             {liaisons.map((l) => (
-              <tr key={l.name} style={{ borderBottom: `1px solid ${T.hairline}` }}>
+              <tr key={l.name} className="vm-trow" style={{ borderBottom: `1px solid ${T.hairline}` }}>
                 <td className="py-3 pr-4" style={{ fontSize: 13.5, fontWeight: 600, paddingLeft: 20 }}>{l.name}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13 }}>{n1(l.hours)}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: l.ot ? toneFrom(l.ot, otTh) : T.ink }}>{l.ot ? n1(l.ot) : "—"}</td>
@@ -1226,7 +1285,7 @@ function ExecutiveInner() {
   const data = useMemo(() => applyScope(rawData, orgId), [rawData, orgId]);
   const tabs = scoped
      ? ["Overview", "Heatmap", "Facilities", "RTA", "Analysis", "QAPI"]
-     : ["Overview", "Heatmap", "Facilities", "RTA", "Analysis", "QAPI", "Team", "Financials"];
+     : ["Overview", "Heatmap", "Facilities", "RTA", "Analysis", "QAPI", "Team"];
   useEffect(() => { if (!tabs.includes(tab)) setTab("Overview"); }, [scoped]);
 
   useEffect(() => {
@@ -1254,6 +1313,7 @@ function ExecutiveInner() {
   return (
     <div className="ed-ui min-h-screen" style={{ background: T.mist, color: T.ink }}>
       <style>{fontStyles}</style>
+      <style>{vitalsCSS}</style>
 
       <header style={{ background: T.panel, borderBottom: `1px solid ${T.hairline}` }}>
         <div className="mx-auto px-6 py-5 flex flex-wrap items-end justify-between gap-4" style={{ maxWidth: 1280 }}>
@@ -1269,7 +1329,7 @@ function ExecutiveInner() {
               </h1>
             </div>
           </div>
-        <nav className="flex items-center gap-2" aria-label="Dashboard sections">
+        <nav className="flex flex-wrap items-center gap-2" aria-label="Dashboard sections" style={{ justifyContent: "flex-end" }}>
             <ScopeSelector />
             {months.length > 0 && (
               <select value={month || ""} onChange={(e) => setMonth(e.target.value)} className="ed-ui" style={{
@@ -1311,7 +1371,7 @@ function ExecutiveInner() {
       )}
 
       <main className="mx-auto px-6 pb-14 pt-8" style={{ maxWidth: 1280 }}>
-        {loading && <div style={{ color: T.inkSoft, fontSize: 14, padding: "40px 0" }}>Loading {month ? monthLabel(month) : ""}…</div>}
+        {loading && <BootLoader month={month ? monthLabel(month) : ""} />}
         {err && !loading && <Empty>Couldn't load data: {err}</Empty>}
         {!loading && !err && !data && <Empty>No monthly data has been committed yet. Run the aggregation worker, then refresh.</Empty>}
         {!loading && !err && data && (
@@ -1319,13 +1379,10 @@ function ExecutiveInner() {
             {tab === "Overview" && <OverviewTab data={data} month={month} goToFacility={goToFacility} />}
             {tab === "Heatmap" && <HeatmapTab data={data} month={month} goToFacility={goToFacility} />}
             {tab === "Facilities" && <FacilitiesTab data={data} selectedName={selectedName} setSelectedName={setSelectedName} month={month} />}
-            {tab === "RTA" && <RtaTab data={data} month={month} />}
+            {tab === "RTA" && <RtaTab data={data} month={month} goToFacility={goToFacility} />}
             {tab === "Analysis" && <AnalysisTab />}
             {tab === "QAPI" && <QapiTab />}
             {tab === "Team" && <TeamTab data={data} month={month} />}
-            {tab === "Financials" && (
-              <Empty>Weekly AR and financial tracking will appear here once billing data is loaded. Census, RTA, and facility metrics are live in the other tabs.</Empty>
-            )}
           </>
         )}
 
