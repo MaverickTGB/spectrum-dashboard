@@ -193,6 +193,7 @@ export function AnalysisTab() {
 
   return (
     <>
+      <div className="vm-secbar"><span className="vm-tick2" /><h2>Trend analysis</h2><span className="vm-secright">{facName} · {rangeMonths.length} month{rangeMonths.length === 1 ? "" : "s"}</span></div>
       {/* controls */}
       <div className="flex flex-wrap items-end gap-3" style={{ marginBottom: 24 }}>
         <div>
@@ -321,3 +322,4 @@ export function AnalysisTab() {
 }
 
 export default AnalysisTab;
+
