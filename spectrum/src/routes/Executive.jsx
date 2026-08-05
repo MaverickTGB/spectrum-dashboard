@@ -1066,7 +1066,7 @@ function RtaTab({ data, month, goToFacility }) {
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13, fontWeight: 600, color: rateColor(r.snfRate, snfTh) }}><span aria-hidden style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: rateColor(r.snfRate, snfTh), marginRight: 7, verticalAlign: "middle" }} />{r.snfRate == null ? "—" : r.snfRate.toFixed(1) + "%"}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{r.ltc_admits ?? "—"}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{r.ltc_rtas ?? "—"}</td>
-                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, fontWeight: 600, color: rateColor(r.ltcRate, ltcTh) }}>{r.ltcRate == null ? "—" : r.ltcRate.toFixed(1) + "%"}</td>
+                <td className="ed-num py-3 pr-4" style={{ fontSize: 13, fontWeight: 600, color: rateColor(r.ltcRate, ltcTh) }}>{ltcTh?.amber != null && r.ltcRate != null && <span aria-hidden style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: rateColor(r.ltcRate, ltcTh), marginRight: 7, verticalAlign: "middle" }} />}{r.ltcRate == null ? "—" : r.ltcRate.toFixed(1) + "%"}</td>
                 <td className="ed-num py-3 pr-4" style={{ fontSize: 13, color: T.inkSoft }}>{r.er ?? "—"}</td>
               </tr>
             ))}
