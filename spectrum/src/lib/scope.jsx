@@ -161,12 +161,24 @@ export function applyScope(data, orgId) {
   const captureRate = totalBuilding ? Math.round((totalCensus / totalBuilding) * 1000) / 10 : null;
   const totalSnf = sum(facilities, "snf");
   const totalLtc = sum(facilities, "ltc");
-
+  // Recompute month-over-month from the scoped facilities, so the census KPI's
+  // MoM arrow matches the narrowed headline instead of the whole portfolio.
+  const monthTotals = {};
+  facilities.forEach((f) => {
+    (f.mSeriesMonths || []).forEach((m, i) => {
+      const v = f.mSeries?.[i];
+      if (v != null) monthTotals[m] = (monthTotals[m] || 0) + v;
+    });
+  });
+  const mMonths = Object.keys(monthTotals).sort();
+  const prevKey = mMonths.length >= 2 ? mMonths[mMonths.length - 2] : null;
+  const mom = { census: prevKey != null ? { prev: monthTotals[prevKey], delta: totalCensus - monthTotals[prevKey] } : null };
   return {
     ...data,
     facilities,
     portfolioTrend,
     rta,
+    mom,
     liaisons: [],
     hasLiaison: false,
     hasGrowth,
