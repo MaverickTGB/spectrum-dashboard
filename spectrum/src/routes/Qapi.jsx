@@ -6,6 +6,7 @@ import {
 import { supabase } from "../lib/supabase.js";
 import { useAuth } from "../lib/auth.jsx";
 import { useScope } from "../lib/scope.jsx";
+import { FlagAccountability } from "./QapiAccountability.jsx";
 import { MetricTrend, FlagHistory, QapiWatchList } from "./QapiInsights.jsx";
 
 /* ————————————————————— Tokens (mirrors Executive.jsx) ————————————————————— */
@@ -792,7 +793,8 @@ export function QapiTab() {
           />
         </>
       )}
-
+      {/* ——— Flag accountability ——— */}
+      <FlagAccountability />
       {/* ——— Open items ——— */}
       <div style={{ marginTop: 36 }}>
         <SectionLabel right={`${scopedFlags.length} open`}>Open items{scoped ? "" : " across the portfolio"}</SectionLabel>
