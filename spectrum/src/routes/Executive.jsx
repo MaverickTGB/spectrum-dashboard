@@ -129,13 +129,37 @@ const SectionLabel = ({ children, right }) => (
   </div>
 );
 
-const Kpi = ({ label, value, sub, good = true }) => (
-  <div className="ed-card p-5" style={{ borderTop: `3px solid ${good ? T.teal : T.amber}` }}>
-    <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.inkSoft, marginBottom: 10, fontWeight: 500 }}>{label}</div>
-    <div className="ed-display" style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{value}</div>
-    <div className="ed-num" style={{ fontSize: 11.5, marginTop: 8, color: good ? T.teal : T.amber }}>{sub}</div>
-  </div>
-);
+const KPI_TONE = {
+  alert: { bar: T.alert, tint: "rgba(196,69,42,0.06)", glyph: "▲" },
+  watch: { bar: T.amber, tint: "rgba(176,124,31,0.06)", glyph: "◆" },
+  ok:    { bar: T.teal, tint: "transparent", glyph: "" },
+  muted: { bar: T.hairline, tint: "transparent", glyph: "" },
+};
+const Kpi = ({ label, value, sub, good = true, tone }) => {
+  // Legacy path: no `tone` prop -> identical to the original component.
+  if (!tone) {
+    return (
+      <div className="ed-card p-5" style={{ borderTop: `3px solid ${good ? T.teal : T.amber}` }}>
+        <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.inkSoft, marginBottom: 10, fontWeight: 500 }}>{label}</div>
+        <div className="ed-display" style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{value}</div>
+        <div className="ed-num" style={{ fontSize: 11.5, marginTop: 8, color: good ? T.teal : T.amber }}>{sub}</div>
+      </div>
+    );
+  }
+  // Toned path: emphasises what's off, recedes what's fine / informational.
+  const t = KPI_TONE[tone] || KPI_TONE.muted;
+  const flagged = tone === "alert" || tone === "watch";
+  return (
+    <div className="ed-card p-5" style={{ borderTop: `3px solid ${t.bar}`, background: t.tint }}>
+      <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+        <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 500 }}>{label}</span>
+        {t.glyph && <span aria-hidden style={{ color: t.bar, fontSize: 12, lineHeight: 1 }}>{t.glyph}</span>}
+      </div>
+      <div className="ed-display" style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, color: tone === "muted" ? T.inkSoft : T.ink }}>{value}</div>
+      <div className="ed-num" style={{ fontSize: 11.5, marginTop: 8, color: flagged ? t.bar : T.inkSoft }}>{sub}</div>
+    </div>
+  );
+};
 
 const Empty = ({ children }) => (
   <div className="ed-card p-6" style={{ color: T.inkSoft, fontSize: 13.5, lineHeight: 1.6, borderLeft: `4px solid ${T.amber}` }}>
@@ -173,6 +197,43 @@ const toneFrom = (v, th) => {
   return val >= Number(th.red) ? T.alert : val >= Number(th.amber) ? T.amber : T.teal;
 };
 const thNum = (v) => (v == null ? null : Number(v));
+// Map a value against a threshold row to a KPI tone name. No scoring -> "muted".
+const toneName = (v, th) => {
+  if (v == null || !th || th.amber == null) return "muted";
+  const c = toneFrom(v, th);
+  return c === T.alert ? "alert" : c === T.amber ? "watch" : "ok";
+};
+// —— Data-freshness strip: disambiguates a blank cell (missing) from a real zero ——
+const covTone = (n, d) => (d === 0 ? T.hairline : n >= d ? T.teal : n > 0 ? T.amber : T.alert);
+const covGlyph = (n, d) => (d === 0 ? "·" : n >= d ? "●" : n > 0 ? "◆" : "▲");
+const FreshnessStrip = ({ coverage }) => {
+  if (!coverage) return null;
+  const items = [
+    { label: "Census", n: coverage.census, d: coverage.facilities },
+    { label: "Growth", n: coverage.growth, d: coverage.facilities },
+    { label: "RTA", n: coverage.rta, d: coverage.facilities },
+    { label: "Daily census", n: coverage.daily, d: coverage.facilities },
+    { label: "CMS", n: coverage.cms.loaded, d: coverage.cms.denom },
+  ];
+  return (
+    <div className="ed-card flex flex-wrap items-center gap-4" style={{ padding: "10px 16px", marginBottom: 20 }}>
+      <span style={{ fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 700 }}>Data loaded</span>
+      {items.map((it) => {
+        const tone = covTone(it.n, it.d);
+        return (
+          <span key={it.label} className="ed-num" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+            <span aria-hidden style={{ color: tone, lineHeight: 1 }}>{covGlyph(it.n, it.d)}</span>
+            <span style={{ color: T.inkSoft }}>{it.label}</span>
+            <span style={{ color: tone === T.hairline ? T.inkSoft : tone, fontWeight: 600 }}>{it.n}/{it.d}</span>
+          </span>
+        );
+      })}
+      {coverage.cms.latest && (
+        <span className="ed-num" style={{ marginLeft: "auto", fontSize: 11, color: T.inkSoft }}>CMS updated {fmtDate(coverage.cms.latest)}</span>
+      )}
+    </div>
+  );
+};
 
 /* ————————————————————— Tab: Overview ————————————————————— */
 function OverviewTab({ data, month, goToFacility }) {
@@ -180,14 +241,17 @@ function OverviewTab({ data, month, goToFacility }) {
   const topOpp = facilities.filter((f) => f.nonSpec != null && f.nonSpec > 5).sort((a, b) => b.nonSpec - a.nonSpec).slice(0, 6);
   const oppTh = data.thresholds?.["growth.opportunity_pct"];
   const { scoped } = useScope();
+  const capTone = hasGrowth ? toneName(kpis.captureRate, data.thresholds?.["growth.capture"]) : "muted";
+  const censusTone = data.mom?.census && data.mom.census.delta < 0 ? "watch" : "ok";
   return (
     <>
-     <section className={`grid grid-cols-2 ${scoped ? "md:grid-cols-4" : "md:grid-cols-5"} gap-4`}>
-        <Kpi label="Avg daily census" value={n0(kpis.totalCensus)} sub={<>{facilities.length} facilities{data.mom?.census ? <> · <MoMDelta delta={data.mom.census.delta} /></> : null}</>} />
-        <Kpi label="Building census" value={n0(kpis.totalBuilding)} sub={hasGrowth ? "Total patients in buildings" : "No building data this month"} good={hasGrowth} />
-        <Kpi label="Capture rate" value={kpis.captureRate == null ? "—" : `${kpis.captureRate}%`} sub={hasGrowth ? "Spectrum share of buildings" : "Needs building data"} good={hasGrowth} />
-        <Kpi label="Growth opportunity" value={n0(kpis.totalOpportunity)} sub={hasGrowth ? "Non-Spectrum patients" : "Needs building data"} good={false} />
-     {!scoped && <Kpi label="Liaison notes" value={hasLiaison ? kpis.liaisonNotes : "—"} sub={hasLiaison ? `${n0(kpis.liaisonHrs)} hrs worked` : "No liaison data this month"} good={hasLiaison} />}
+      {!scoped && <FreshnessStrip coverage={data.coverage} />}
+      <section className={`grid grid-cols-2 ${scoped ? "md:grid-cols-4" : "md:grid-cols-5"} gap-4`}>
+        <Kpi tone={censusTone} label="Avg daily census" value={n0(kpis.totalCensus)} sub={<>{facilities.length} facilities{data.mom?.census ? <> · <MoMDelta delta={data.mom.census.delta} /></> : null}</>} />
+        <Kpi tone={hasGrowth ? "ok" : "muted"} label="Building census" value={n0(kpis.totalBuilding)} sub={hasGrowth ? "Total patients in buildings" : "No building data this month"} />
+        <Kpi tone={capTone} label="Capture rate" value={kpis.captureRate == null ? "—" : `${kpis.captureRate}%`} sub={hasGrowth ? "Spectrum share of buildings" : "Needs building data"} />
+        <Kpi tone={hasGrowth ? "watch" : "muted"} label="Growth opportunity" value={n0(kpis.totalOpportunity)} sub={hasGrowth ? "Non-Spectrum patients" : "Needs building data"} />
+        {!scoped && <Kpi tone={hasLiaison ? "ok" : "muted"} label="Liaison notes" value={hasLiaison ? kpis.liaisonNotes : "—"} sub={hasLiaison ? `${n0(kpis.liaisonHrs)} hrs worked` : "No liaison data this month"} />}
       </section>
 
       {hasGrowth && topOpp.length > 0 ? (
@@ -551,7 +615,7 @@ async function loadMonthData(monthIso) {
   const end = lastDayOfMonth(ym);
   const trailStart = monthsAgoStart(ym, 5);   // 6-month window ending at `start`
   const [facs, fm, fg, rta, dc, lm, cms, th, tr] = await Promise.all([
-    supabase.from("facilities").select("id, name, code, ccn, org_id"),
+    supabase.from("facilities").select("id, name, code, ccn, org_id, active"),
     supabase.from("facility_monthly").select("facility_id, avg_spectrum_census, avg_snf, avg_ltc").eq("month", start),
     supabase.from("facility_growth").select("facility_id, avg_building_census, avg_non_spectrum").eq("month", start),
     supabase.from("rta_monthly").select("facility_id, admits, rtas, ltc_admits, ltc_rtas, er_visits").eq("month", start),
@@ -623,6 +687,22 @@ async function loadMonthData(monthIso) {
   const curIdx = trailMonths.indexOf(start);
   const prevKey = curIdx > 0 ? trailMonths[curIdx - 1] : null;
   const mom = { census: prevKey != null ? { prev: monthTotals[prevKey], delta: totalCensus - monthTotals[prevKey] } : null };
+  // data-coverage for the freshness strip (numerators = distinct facilities present per source)
+  const activeFacs = (facs.data || []).filter((f) => f.active !== false);
+  const distinctIds = (rows) => new Set((rows || []).map((r) => r.facility_id)).size;
+  const coverage = {
+    month: start,
+    facilities: activeFacs.length,
+    census: distinctIds(fm.data),
+    growth: distinctIds(fg.data),
+    rta: distinctIds(rta.data),
+    daily: distinctIds(dc.data),
+    cms: {
+      loaded: (cms.data || []).length,
+      denom: activeFacs.filter((f) => f.ccn).length,
+      latest: (cms.data || []).reduce((mx, c) => (c.refreshed_at && (!mx || c.refreshed_at > mx) ? c.refreshed_at : mx), null),
+    },
+  };
   const liaisons = (lm.data || []).map((l) => ({
     name: l.liaisons?.name || "—", hours: l.hours, ot: l.ot_hours, notes: l.notes_count,
   })).sort((a, b) => (b.hours || 0) - (a.hours || 0));
@@ -636,7 +716,7 @@ async function loadMonthData(monthIso) {
     ltcRate: r.ltc_admits ? (r.ltc_rtas / r.ltc_admits) * 100 : null,
   })).sort((a, b) => (b.snfRate ?? -1) - (a.snfRate ?? -1));
   return {
-    facilities, portfolioTrend, rta: rtaRows, liaisons, hasGrowth, hasLiaison, mom,
+    facilities, portfolioTrend, rta: rtaRows, liaisons, hasGrowth, hasLiaison, mom, coverage,
     thresholds: Object.fromEntries((th.data || []).map((t) => [t.metric_key, t])),
     mixData: [{ type: "SNF", count: Math.round(totalSnf) }, { type: "LTC", count: Math.round(totalLtc) }],
     kpis: { totalCensus, totalBuilding, totalOpportunity, captureRate, liaisonNotes, liaisonHrs },
