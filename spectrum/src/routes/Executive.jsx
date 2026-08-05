@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  BarChart, Bar, Cell,
+  BarChart, Bar, Cell, AreaChart, Area,
 } from "recharts";
 import { signOut } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
@@ -236,90 +236,560 @@ const FreshnessStrip = ({ coverage }) => {
 };
 
 /* ————————————————————— Tab: Overview ————————————————————— */
+/* ——— Vitals-monitor styles (scoped with a vm- prefix) ——— */
+const vitalsCSS = `
+  .vm-hero{position:relative;overflow:hidden;border-radius:18px;color:#EAF2F4;border:1px solid #113255;
+     background:radial-gradient(680px 340px at 10% -20%,#123A5C 0%,rgba(18,58,92,0) 62%),linear-gradient(160deg,#0A1E3C 0%,#0C2A48 100%);}
+  .vm-gridbg{position:absolute;inset:0;background:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;transition:opacity 1.1s ease;}
+  .vm-boot{position:absolute;inset:0;background:#0A1E3C;z-index:9;display:flex;align-items:center;justify-content:center;border-radius:18px;transition:opacity .5s ease;}
+  .vm-scanline{position:absolute;left:0;right:0;height:2px;top:0;background:linear-gradient(90deg,transparent,#37B4BE,transparent);box-shadow:0 0 14px 2px rgba(55,180,190,.7);}
+  .vm-btxt{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.35em;color:#7FE0E8;text-transform:uppercase;}
+  .vm-monbar{display:flex;align-items:center;justify-content:space-between;padding:13px 22px 9px;position:relative;z-index:2;}
+  .vm-lead-in{display:flex;align-items:center;gap:16px;}
+  .vm-live{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#9FE0E6;font-weight:600;}
+  .vm-dot{width:8px;height:8px;border-radius:50%;background:#37B4BE;animation:vm-pulse 1.05s infinite;}
+  @keyframes vm-pulse{0%{box-shadow:0 0 0 0 rgba(55,180,190,.6);}70%{box-shadow:0 0 0 8px rgba(55,180,190,0);}100%{box-shadow:0 0 0 0 rgba(55,180,190,0);}}
+  .vm-lead-tag{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;color:#5F8B93;text-transform:uppercase;}
+  .vm-bpm{display:flex;align-items:baseline;gap:6px;font-family:'IBM Plex Mono',monospace;color:#7FE0E8;}
+  .vm-heart{color:#F0A594;font-size:14px;animation:vm-thump 0.83s infinite;align-self:center;}
+  @keyframes vm-thump{0%,100%{transform:scale(1);}12%{transform:scale(1.32);}24%{transform:scale(1);}}
+  .vm-bpm b{font-size:20px;font-weight:600;}.vm-bpm small{font-size:10.5px;color:#5F8B93;letter-spacing:.06em;}
+  .vm-date{font-size:11.5px;color:#5F8B93;font-family:'IBM Plex Mono',monospace;}
+  .vm-ecgstrip{position:relative;height:96px;margin:0 8px;z-index:2;background:repeating-linear-gradient(90deg,rgba(55,180,190,.05) 0 1px,transparent 1px 22px),repeating-linear-gradient(0deg,rgba(55,180,190,.05) 0 1px,transparent 1px 22px);}
+  .vm-ecglabel{position:absolute;left:14px;top:8px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#5F8B93;z-index:3;}
+  .vm-kgrid{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr 1fr;position:relative;z-index:2;border-top:1px solid rgba(255,255,255,.07);}
+  .vm-kcell{padding:15px 18px 16px;position:relative;}
+  .vm-kcell + .vm-kcell{border-left:1px solid rgba(255,255,255,.07);}
+  .vm-ktick{position:absolute;left:18px;top:15px;width:16px;height:2px;border-radius:2px;background:var(--ch,#37B4BE);}
+  .vm-kcell.vm-alarm .vm-ktick{width:9px;height:9px;top:12px;border-radius:50%;animation:vm-alarmblink 1s steps(1,end) infinite;}
+  @keyframes vm-alarmblink{0%,49%{opacity:1;box-shadow:0 0 9px 1px var(--ch);}50%,100%{opacity:.28;box-shadow:none;}}
+  .vm-alarmtag{position:absolute;right:16px;top:13px;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ch);animation:vm-alarmblink 1s steps(1,end) infinite;}
+  .vm-klabel{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ch,#8FB4BA);font-weight:600;margin:12px 0 8px;}
+  .vm-kval{font-size:36px;font-weight:600;line-height:1;letter-spacing:-.02em;color:#fff;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;}
+  .vm-lead .vm-kval{font-size:44px;}
+  .vm-ksub{font-size:11px;color:#8FB4BA;margin-top:9px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+  .vm-delta{display:inline-flex;align-items:center;gap:3px;font-weight:600;padding:1px 6px;border-radius:20px;font-size:10.5px;}
+  .vm-delta.up{background:rgba(55,180,190,.16);color:#7FE0E8;}
+  .vm-delta.down{background:rgba(196,69,42,.20);color:#F0A594;}
+  .vm-gaugewrap{display:flex;align-items:center;gap:11px;}
+  .vm-stars{font-size:15px;letter-spacing:1px;color:#F0CE8B;}
+  .vm-chwave{margin-top:9px;height:24px;width:100%;display:block;}
+  .vm-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0 8px;}
+  .vm-chip{background:#fff;border:1px solid ${T.hairline};border-radius:12px;padding:12px 14px;display:flex;gap:11px;align-items:flex-start;}
+  .vm-chip-ic{width:28px;height:28px;border-radius:8px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;}
+  .vm-chip h4{margin:0 0 2px;font-size:12px;font-weight:600;color:${T.ink};}
+  .vm-chip p{margin:0;font-size:11px;color:${T.inkSoft};line-height:1.35;}
+  .vm-tile{background:${T.mist};border-radius:10px;padding:11px 13px;}
+  .vm-fgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  .vm-fcard{background:#fff;border:1px solid ${T.hairline};border-radius:14px;padding:15px 16px;cursor:pointer;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease;position:relative;overflow:hidden;}
+  .vm-fcard:hover{transform:translateY(-3px);box-shadow:0 10px 26px -12px rgba(19,42,46,.34);border-color:#C6E0E2;}
+  .vm-fname{font-size:13.5px;font-weight:600;margin:0 0 2px;color:${T.ink};}
+  .vm-floc{font-size:11px;color:${T.inkSoft};margin:0 0 11px;}
+  .vm-fbig{display:flex;align-items:baseline;gap:6px;}
+  .vm-fn{font-size:25px;font-weight:600;color:${T.ink};}.vm-fl{font-size:10.5px;color:${T.inkSoft};}
+  .vm-fministars{font-size:11px;color:${T.amber};margin-top:9px;letter-spacing:1px;}
+  .vm-fcap{display:flex;justify-content:space-between;margin-top:7px;font-size:10px;color:${T.inkSoft};}
+  .vm-pill{position:absolute;top:13px;right:13px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;}
+  .vm-fdetail{overflow:hidden;transition:max-height .32s ease;}
+  .vm-fdetail-inner{border-top:1px dashed ${T.hairline};margin-top:12px;padding-top:11px;display:grid;grid-template-columns:1fr 1fr;gap:9px 14px;}
+  .vm-mini{font-size:10.5px;color:${T.inkSoft};}.vm-mini b{display:block;font-size:14px;color:${T.ink};font-weight:600;margin-top:1px;}
+  .vm-openbtn{margin-top:12px;width:100%;background:${T.tealSoft};color:${T.teal};border:none;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;}
+  .vm-openbtn:hover{background:#D3EAEC;}
+  @media (max-width:900px){.vm-kgrid{grid-template-columns:1fr 1fr;}.vm-fgrid{grid-template-columns:1fr 1fr;}.vm-strip{grid-template-columns:1fr 1fr;}.vm-kcell + .vm-kcell{border-left:none;}}
+  @media (prefers-reduced-motion: reduce){.vm-heart,.vm-dot,.vm-ktick,.vm-alarmtag{animation:none !important;}}
+`;
+
+/* ——— Vitals-monitor building blocks (canvas waveforms, decode counters, rings) ——— */
+const waveFns = {
+  ecg(ph){let v=0;v+=0.10*Math.exp(-Math.pow((ph-0.16)/0.026,2));v-=0.07*Math.exp(-Math.pow((ph-0.29)/0.010,2));v+=1.00*Math.exp(-Math.pow((ph-0.33)/0.0090,2));v-=0.22*Math.exp(-Math.pow((ph-0.37)/0.013,2));v+=0.24*Math.exp(-Math.pow((ph-0.60)/0.050,2));return v;},
+  ecgfast(ph){return waveFns.ecg(ph);},
+  pleth(ph){return 0.9*Math.exp(-Math.pow((ph-0.28)/0.13,2))+0.34*Math.exp(-Math.pow((ph-0.62)/0.15,2))-0.2;},
+  resp(ph){return 0.72*Math.sin(2*Math.PI*ph-Math.PI/2);},
+  steady(ph){return 0.42*Math.sin(2*Math.PI*ph)+0.16*Math.sin(4*Math.PI*ph+0.6);},
+};
+const CHW = {
+  ecg:{pxPerSec:52,beatPx:44,gap:9,mid:0.55,amp:0.34},
+  ecgfast:{pxPerSec:74,beatPx:40,gap:9,mid:0.55,amp:0.34},
+  pleth:{pxPerSec:50,beatPx:58,gap:9,mid:0.56,amp:0.30},
+  resp:{pxPerSec:40,beatPx:120,gap:8,mid:0.5,amp:0.34},
+  steady:{pxPerSec:44,beatPx:80,gap:8,mid:0.5,amp:0.30},
+};
+
+// A single live-scrolling waveform channel drawn on a canvas (ICU-monitor style:
+// persistent trace with a moving erase gap). Cleans up its rAF loop on unmount.
+function WaveCanvas({ type, color, lineW = 1.4, glow = null, glowBlur = 5, pxPerSec, beatPx, gap, mid, amp, style, className }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const cv = ref.current; if (!cv) return;
+    const ctx = cv.getContext("2d");
+    const fn = waveFns[type] || waveFns.steady;
+    let W = 0, H = 0, d = 0, prevX = 0, prevY = 0, raf = 0, last = performance.now();
+    const resize = () => {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      W = cv.clientWidth; H = cv.clientHeight;
+      cv.width = Math.max(1, Math.round(W * dpr)); cv.height = Math.max(1, Math.round(H * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+      prevX = 0; prevY = H * mid; d = 0;
+    };
+    const loop = (now) => {
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      if (W && H) {
+        d += pxPerSec * dt;
+        const x = d % W, phase = (d / beatPx) % 1, y = H * mid - fn(phase) * (H * amp);
+        ctx.clearRect(x, 0, gap, H);
+        if (x >= prevX) {
+          ctx.strokeStyle = color; ctx.lineWidth = lineW; ctx.lineJoin = "round"; ctx.lineCap = "round";
+          if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = glowBlur; } else { ctx.shadowBlur = 0; }
+          ctx.beginPath(); ctx.moveTo(prevX, prevY); ctx.lineTo(x, y); ctx.stroke(); ctx.shadowBlur = 0;
+        }
+        prevX = x; prevY = y;
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    resize(); window.addEventListener("resize", resize); raf = requestAnimationFrame(loop);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
+  }, [type, color, lineW, glow, glowBlur, pxPerSec, beatPx, gap, mid, amp]);
+  return <canvas ref={ref} className={className} style={style} />;
+}
+
+// Number that "decodes" into place — digits scramble, then lock. Null -> em dash.
+function Decode({ value, dec = 0, suffix = "", dur = 1200, style }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    if (value == null || Number.isNaN(Number(value))) { el.textContent = "—"; return; }
+    const glyphs = "0123456789"; const t0 = performance.now(); let raf = 0;
+    const fmt = (v) => (dec ? Number(v).toFixed(dec) : Math.round(v).toLocaleString()) + suffix;
+    const frame = (now) => {
+      const p = Math.min(1, (now - t0) / dur);
+      if (p < 0.82) {
+        const base = (value * (0.4 + 0.6 * p)).toFixed(dec);
+        el.textContent = base.split("").map((ch) => (/\d/.test(ch) && Math.random() < (0.7 - p * 0.7) ? glyphs[Math.floor(Math.random() * 10)] : ch)).join("") + suffix;
+      } else {
+        const e = 1 - Math.pow(1 - (p - 0.82) / 0.18, 3);
+        el.textContent = fmt(value * (0.9 + 0.1 * e));
+      }
+      if (p < 1) raf = requestAnimationFrame(frame); else el.textContent = fmt(value);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [value, dec, suffix, dur]);
+  return <span ref={ref} className="ed-num" style={style}>{value == null ? "—" : "0"}</span>;
+}
+
+// SVG ring gauge that draws its arc on mount.
+function Ring({ size, r, width, frac, color, track = T.mist, delay = 60, children }) {
+  const ref = useRef(null);
+  const C = 2 * Math.PI * r;
+  const target = C * (1 - Math.max(0, Math.min(1, frac || 0)));
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    el.style.transition = "none"; el.style.strokeDashoffset = String(C);
+    const id = setTimeout(() => { el.style.transition = "stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1)"; el.style.strokeDashoffset = String(target); }, delay);
+    return () => clearTimeout(id);
+  }, [target, C, delay]);
+  const c = size / 2;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={c} cy={c} r={r} fill="none" stroke={track} strokeWidth={width} />
+      <circle ref={ref} cx={c} cy={c} r={r} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" transform={`rotate(-90 ${c} ${c})`} strokeDasharray={C} strokeDashoffset={C} />
+      {children}
+    </svg>
+  );
+}
+
+// Bar that grows from 0 to pct% on mount.
+function GrowBar({ pct, color, height = 9, bg = T.mist, radius = 5, delay = 220 }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const id = setTimeout(() => { el.style.width = Math.max(0, Math.min(100, pct || 0)) + "%"; }, delay);
+    return () => clearTimeout(id);
+  }, [pct, delay]);
+  return <div style={{ height, background: bg, borderRadius: radius, overflow: "hidden" }}><div ref={ref} style={{ height: "100%", width: 0, background: color, borderRadius: radius, transition: "width 1s cubic-bezier(.4,0,.2,1)" }} /></div>;
+}
+
+function Donut({ snf, ltc }) {
+  const tot = (snf || 0) + (ltc || 0) || 1;
+  const frac = (snf || 0) / tot;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 18, justifyContent: "center", height: "100%" }}>
+      <Ring size={146} r={38} width={20} frac={frac} color={T.teal} track={T.tealSoft} delay={200}>
+        <text x="73" y="69" textAnchor="middle" fontSize="23" fontWeight="600" fill={T.ink} fontFamily="IBM Plex Mono">{Math.round(frac * 100)}%</text>
+        <text x="73" y="86" textAnchor="middle" fontSize="11" fill={T.inkSoft}>SNF</text>
+      </Ring>
+      <div style={{ fontSize: 12.5, lineHeight: 2.1 }}>
+        <div><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: T.teal }} /> SNF · <b className="ed-num">{n0(snf)}</b></div>
+        <div><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: "#B9D4D8" }} /> LTC · <b className="ed-num">{n0(ltc)}</b></div>
+      </div>
+    </div>
+  );
+}
+
+const vmColor = { alarm: "#F0A594", watch: "#F0CE8B", ok: "#37B4BE" };
+const rtaLineColor = (r) => (r == null ? T.inkSoft : r <= 12 ? T.teal : r <= 21.3 ? T.amber : T.alert);
+
+// The dark vitals-monitor hero: boot sweep, live ECG, and per-channel traces.
+function VitalsHero({ channels, bpm, admitsPerDay, beatPxMain, monthText }) {
+  const [booting, setBooting] = useState(true);
+  const [step, setStep] = useState(0);
+  const scanRef = useRef(null);
+  const steps = ["initializing portfolio", "loading census · rta · qapi", "syncing cms five-star", "portfolio online"];
+  useEffect(() => {
+    let i = 0;
+    const t = setInterval(() => { i += 1; setStep(Math.min(i, steps.length - 1)); }, 240);
+    if (scanRef.current && scanRef.current.animate) scanRef.current.animate([{ top: "0%" }, { top: "100%" }], { duration: 900, easing: "ease-in-out" });
+    const done = setTimeout(() => { clearInterval(t); setBooting(false); }, 980);
+    return () => { clearInterval(t); clearTimeout(done); };
+  }, []);
+  return (
+    <div className="vm-hero">
+      <div className="vm-gridbg" style={{ opacity: booting ? 0 : 1 }} />
+      <div className="vm-boot" style={{ opacity: booting ? 1 : 0, pointerEvents: booting ? "auto" : "none" }}>
+        <div className="vm-scanline" ref={scanRef} />
+        <div className="vm-btxt">{steps[step]}</div>
+      </div>
+      <div className="vm-monbar">
+        <div className="vm-lead-in">
+          <span className="vm-live"><span className="vm-dot" /> live monitoring</span>
+          <span className="vm-lead-tag">portfolio · lead II · {channels.facilities} facilities</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 22 }}>
+          <div className="vm-bpm"><span className="vm-heart" style={{ animationDuration: (60 / bpm).toFixed(2) + "s" }}>♥</span><b>{bpm}</b><small>bpm · {admitsPerDay == null ? "—" : Math.round(admitsPerDay)} admits/day</small></div>
+          <span className="vm-date">{monthText} · live</span>
+        </div>
+      </div>
+      <div className="vm-ecgstrip">
+        <div className="vm-ecglabel">portfolio rhythm · pulse tracks admissions cadence</div>
+        <WaveCanvas type="ecg" color="#37B4BE" lineW={2} glow="rgba(55,180,190,.85)" glowBlur={8} pxPerSec={210} beatPx={beatPxMain} gap={26} mid={0.52} amp={0.40} style={{ display: "block", width: "100%", height: "100%" }} />
+      </div>
+      <div className="vm-kgrid">
+        {channels.items.map((c) => {
+          const w = CHW[c.wave] || CHW.steady;
+          return (
+            <div key={c.key} className={`vm-kcell${c.lead ? " vm-lead" : ""}${c.alarm ? " vm-alarm" : ""}`} style={{ "--ch": c.ch }}>
+              <div className="vm-ktick" />
+              {c.alarm && <span className="vm-alarmtag">{c.alarmTag}</span>}
+              <div className="vm-klabel">{c.label}</div>
+              <div className="vm-gaugewrap">{c.value}</div>
+              <div className="vm-ksub">{c.sub}</div>
+              <WaveCanvas type={c.wave} color={c.waveColor} lineW={1.4} glow={c.waveColor} glowBlur={5} pxPerSec={w.pxPerSec} beatPx={w.beatPx} gap={w.gap} mid={w.mid} amp={w.amp} className="vm-chwave" />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FacilityCard({ f, qapiStatus, onOpen }) {
+  const [open, setOpen] = useState(false);
+  const cap = f.building ? Math.round((f.census / f.building) * 100) : null;
+  const star = f.cms?.overall_rating ?? null;
+  const snfRta = f.rta?.snfRate ?? null;
+  const hprd = f.cms?.total_nurse_hprd ?? null;
+  const capBar = cap == null ? 0 : cap;
+  const capBarColor = cap == null ? T.hairline : cap < 50 ? T.alert : cap < 65 ? T.amber : T.teal;
+  const up = (f.delta ?? 0) >= 0;
+  const qColor = qapiStatus === "green" ? T.teal : qapiStatus === "amber" ? T.amber : qapiStatus === "red" ? T.alert : T.inkSoft;
+  return (
+    <div className="vm-fcard" onClick={() => setOpen((o) => !o)}>
+      {f.delta != null && <span className="vm-pill" style={{ background: up ? T.tealSoft : "#FBEEEB", color: up ? T.teal : T.alert }}>{up ? "▲" : "▼"} {Math.abs(Math.round(f.delta))}</span>}
+      <p className="vm-fname">{f.name}</p>
+      <p className="vm-floc">{cap == null ? "census only" : `${cap}% capture`}</p>
+      <div className="vm-fbig"><span className="ed-num vm-fn">{n0(f.census)}</span><span className="vm-fl">avg census</span></div>
+      <div className="vm-fministars">{star == null ? <span style={{ color: T.inkSoft }}>CMS not rated</span> : <>{"★".repeat(star)}<span style={{ color: T.hairline }}>{"★".repeat(5 - star)}</span> <span style={{ color: T.inkSoft }}>{star}.0 CMS</span></>}</div>
+      <GrowBar pct={capBar} color={capBarColor} height={7} bg={T.tealSoft} delay={300} />
+      <div className="vm-fcap"><span>{n0(f.census)} on service</span><span>{f.nonSpec == null ? "—" : Math.round(f.nonSpec)} open</span></div>
+      <div className="vm-fdetail" style={{ maxHeight: open ? 220 : 0 }}>
+        <div className="vm-fdetail-inner">
+          <div className="vm-mini">SNF RTA<b className="ed-num" style={{ color: rtaLineColor(snfRta) }}>{snfRta == null ? "—" : snfRta.toFixed(1) + "%"}</b></div>
+          <div className="vm-mini">QAPI<b style={{ color: qColor, textTransform: "capitalize" }}>{qapiStatus || "—"}</b></div>
+          <div className="vm-mini">Nurse HPRD<b className="ed-num">{hprd == null ? "—" : Number(hprd).toFixed(2)}</b></div>
+          <div className="vm-mini">SNF / LTC<b className="ed-num">{n0(f.snf)} / {n0(f.ltc)}</b></div>
+        </div>
+        <button className="vm-openbtn" onClick={(e) => { e.stopPropagation(); onOpen(f.name); }}>Open facility →</button>
+      </div>
+    </div>
+  );
+}
+
 function OverviewTab({ data, month, goToFacility }) {
-  const { facilities, portfolioTrend, kpis, mixData, hasGrowth, hasLiaison } = data;
-  const topOpp = facilities.filter((f) => f.nonSpec != null && f.nonSpec > 5).sort((a, b) => b.nonSpec - a.nonSpec).slice(0, 6);
-  const oppTh = data.thresholds?.["growth.opportunity_pct"];
+  const { facilities, portfolioTrend, kpis, mixData, hasGrowth, qapi } = data;
   const { scoped } = useScope();
-  const capTone = hasGrowth ? toneName(kpis.captureRate, data.thresholds?.["growth.capture"]) : "muted";
-  const censusTone = data.mom?.census && data.mom.census.delta < 0 ? "watch" : "ok";
+  const mean = (arr) => { const v = arr.filter((x) => x != null && !Number.isNaN(Number(x))).map(Number); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const sum = (arr) => arr.filter((x) => x != null).reduce((a, b) => a + Number(b), 0);
+
+  // Days in the loaded month, for admissions-per-day (drives the monitor's beat rate).
+  const [yy, mm] = (month || "2026-01").split("-").map(Number);
+  const daysInMonth = new Date(yy, mm, 0).getDate() || 30;
+
+  // Pooled RTA across the (scoped) facility set.
+  const rtaRows = data.rta || [];
+  const rtaAgg = rtaRows.reduce((a, r) => ({
+    admits: a.admits + (r.admits || 0), rtas: a.rtas + (r.rtas || 0),
+    ltc_admits: a.ltc_admits + (r.ltc_admits || 0), ltc_rtas: a.ltc_rtas + (r.ltc_rtas || 0), er: a.er + (r.er || 0),
+  }), { admits: 0, rtas: 0, ltc_admits: 0, ltc_rtas: 0, er: 0 });
+  const snfRate = rtaAgg.admits ? (rtaAgg.rtas / rtaAgg.admits) * 100 : null;
+  const ltcRate = rtaAgg.ltc_admits ? (rtaAgg.ltc_rtas / rtaAgg.ltc_admits) * 100 : null;
+  const totalAdmits = rtaAgg.admits + rtaAgg.ltc_admits;
+  const admitsPerDay = totalAdmits ? totalAdmits / daysInMonth : null;
+  const rtaTh = data.thresholds?.["rta.snf"];
+  const snfTone = toneName(snfRate, rtaTh);
+
+  // CMS aggregates from facility five-star rows.
+  const cmsRows = facilities.map((f) => f.cms).filter(Boolean);
+  const rated = cmsRows.filter((c) => c.overall_rating != null);
+  const cmsOverall = mean(rated.map((c) => c.overall_rating));
+  const cmsHi = mean(cmsRows.map((c) => c.health_inspection_rating));
+  const cmsStaff = mean(cmsRows.map((c) => c.staffing_rating));
+  const cmsQm = mean(cmsRows.map((c) => c.qm_rating));
+  const nurseHprd = mean(cmsRows.map((c) => c.total_nurse_hprd));
+  const rnHprd = mean(cmsRows.map((c) => c.rn_hprd));
+  const rnTurn = mean(cmsRows.map((c) => c.rn_turnover));
+  const fines = sum(cmsRows.map((c) => c.total_fine_dollars));
+
+  // QAPI weekly rollup, filtered to the scoped facility set.
+  const facIds = new Set(facilities.map((f) => f.facility_id));
+  const facNames = new Set(facilities.map((f) => f.name));
+  const qSubs = (qapi?.submissions || []).filter((s) => facIds.has(s.facility_id));
+  const qFlags = (qapi?.flags || []).filter((fl) => !fl.facility_name || facNames.has(fl.facility_name));
+  const qRequired = qSubs.length;
+  const qSubmitted = qSubs.filter((s) => s.submitted).length;
+  const qMdDenom = qSubmitted;
+  const qMd = qSubs.filter((s) => s.submitted && s.md_attended).length;
+  const qRed = qSubs.filter((s) => (s.status === "red") || ((s.flag_count || 0) > 0)).length;
+  const openFlags = [...qFlags].sort((a, b) => (b.days_open || 0) - (a.days_open || 0));
+  const overdueFlags = openFlags.filter((fl) => (fl.days_open || 0) >= 14);
+  const hasQapi = !!qapi && qRequired > 0;
+  const qStatusByFac = {};
+  qSubs.forEach((s) => { qStatusByFac[s.facility_id] = (s.flag_count || 0) > 0 || s.status === "red" ? "red" : s.submitted ? "green" : "amber"; });
+
+  // Beat rate tied to a real metric (admissions cadence).
+  const bpm = admitsPerDay == null ? 66 : Math.max(54, Math.min(104, Math.round(40 + admitsPerDay * 0.85)));
+  const beatPxMain = 210 / (bpm / 60);
+
+  const captureFrac = kpis.captureRate == null ? 0 : kpis.captureRate / 100;
+  const censusDelta = data.mom?.census?.delta;
+  const censusPct = data.mom?.census && data.mom.census.prev ? (data.mom.census.delta / data.mom.census.prev) * 100 : null;
+
+  // Hero channels.
+  const snfChColor = snfTone === "alert" ? vmColor.alarm : snfTone === "watch" ? vmColor.watch : vmColor.ok;
+  const qapiAlarm = hasQapi && overdueFlags.length > 0;
+  const channelItems = [
+    {
+      key: "census", lead: true, ch: "#37B4BE", wave: "ecg", waveColor: "#37B4BE",
+      label: "Avg daily census",
+      value: <span className="vm-kval" style={{ fontSize: 44 }}><Decode value={kpis.totalCensus} /></span>,
+      sub: censusDelta == null ? <span>{facilities.length} facilities</span> : <><span className={`vm-delta ${censusDelta >= 0 ? "up" : "down"}`}>{censusDelta >= 0 ? "▲" : "▼"} {censusPct == null ? n0(Math.abs(censusDelta)) : Math.abs(censusPct).toFixed(1) + "%"}</span> vs prior month</>,
+    },
+    {
+      key: "capture", ch: "#7FD9C6", wave: "pleth", waveColor: "#7FD9C6",
+      label: "Capture rate",
+      value: <span className="vm-gaugewrap"><Ring size={46} r={18} width={5.5} frac={captureFrac} color="#37B4BE" track="rgba(255,255,255,.12)" /><span className="vm-kval" style={{ fontSize: 27 }}><Decode value={kpis.captureRate} suffix="%" /></span></span>,
+      sub: hasGrowth ? <span>Spectrum share of buildings</span> : <span>Needs building data</span>,
+    },
+    {
+      key: "rta", ch: snfChColor, wave: "ecgfast", waveColor: snfChColor, alarm: snfTone === "watch" || snfTone === "alert", alarmTag: snfTone === "alert" ? "▲ high" : "▲ watch",
+      label: "SNF return-to-acute",
+      value: <span className="vm-kval"><Decode value={snfRate} dec={1} suffix="%" /></span>,
+      sub: <span>goal {thNum(rtaTh?.target) ?? "—"}% · nat'l {thNum(rtaTh?.benchmark_national) ?? "—"}%</span>,
+    },
+    {
+      key: "qapi", ch: qapiAlarm ? "#F0A594" : "#7FD9C6", wave: "resp", waveColor: qapiAlarm ? "#F0A594" : "#7FD9C6", alarm: qapiAlarm, alarmTag: "◷ overdue",
+      label: "QAPI open items",
+      value: <span className="vm-kval"><Decode value={hasQapi ? openFlags.length : null} /></span>,
+      sub: hasQapi ? <><span className="vm-delta up">{qRequired ? Math.round((qSubmitted / qRequired) * 100) : 0}% in</span> {overdueFlags.length ? `oldest ${overdueFlags[0].days_open}d` : "none overdue"}</> : <span>QAPI not loaded</span>,
+    },
+    {
+      key: "cms", ch: "#F0CE8B", wave: "steady", waveColor: "#F0CE8B",
+      label: "CMS overall",
+      value: <span className="vm-gaugewrap"><span className="vm-kval" style={{ fontSize: 30 }}><Decode value={cmsOverall} dec={1} /></span><span className="vm-stars">{cmsOverall == null ? "" : "★".repeat(Math.round(cmsOverall)) + "☆".repeat(5 - Math.round(cmsOverall))}</span></span>,
+      sub: <span>{rated.length} of {facilities.length} rated</span>,
+    },
+  ];
+  const channels = { facilities: facilities.length, items: channelItems };
+
+  // "What changed" highlights, derived from live data with graceful fallbacks.
+  const highlights = [];
+  let bestGain = null;
+  facilities.forEach((f) => { const s = (f.mSeries || []).filter((v) => v != null).map(Number); if (s.length >= 2) { const g = s[s.length - 1] - s[s.length - 2]; if (bestGain == null || g > bestGain.g) bestGain = { name: f.name, g }; } });
+  if (bestGain && bestGain.g > 0.5) highlights.push({ tint: T.tealSoft, fg: T.teal, glyph: "▲", title: `${bestGain.name} +${Math.round(bestGain.g)} census`, body: "Biggest month-over-month gain." });
+  if (rtaTh?.benchmark_national != null) { let worst = null; facilities.forEach((f) => { const r = f.rta?.snfRate; if (r != null && r > Number(rtaTh.benchmark_national)) { if (worst == null || r > worst.r) worst = { name: f.name, r }; } }); if (worst) highlights.push({ tint: "#FBEEEB", fg: T.alert, glyph: "!", title: `${worst.name} RTA ${worst.r.toFixed(1)}%`, body: "Above national — needs review." }); }
+  if (qapiAlarm) highlights.push({ tint: "#F6EEDD", fg: T.amber, glyph: "◷", title: `${overdueFlags.length} QAPI item${overdueFlags.length > 1 ? "s" : ""} overdue`, body: `Oldest ${overdueFlags[0].days_open}d${overdueFlags[0].facility_name ? " · " + overdueFlags[0].facility_name : ""}.` });
+  { let top = null; facilities.forEach((f) => { const s = f.cms?.overall_rating; if (s != null && (top == null || s > top.s)) top = { name: f.name, s }; }); if (top) highlights.push({ tint: T.tealSoft, fg: T.teal, glyph: "★", title: `${top.name} ${top.s}★`, body: "Top CMS rating in the portfolio." }); }
+
+  const topOpp = facilities.filter((f) => f.nonSpec != null && f.nonSpec > 5).sort((a, b) => b.nonSpec - a.nonSpec).slice(0, 6);
+
   return (
     <>
-      {!scoped && <FreshnessStrip coverage={data.coverage} />}
-      <section className={`grid grid-cols-2 ${scoped ? "md:grid-cols-4" : "md:grid-cols-5"} gap-4`}>
-        <Kpi tone={censusTone} label="Avg daily census" value={n0(kpis.totalCensus)} sub={<>{facilities.length} facilities{data.mom?.census ? <> · <MoMDelta delta={data.mom.census.delta} /></> : null}</>} />
-        <Kpi tone={hasGrowth ? "ok" : "muted"} label="Building census" value={n0(kpis.totalBuilding)} sub={hasGrowth ? "Total patients in buildings" : "No building data this month"} />
-        <Kpi tone={capTone} label="Capture rate" value={kpis.captureRate == null ? "—" : `${kpis.captureRate}%`} sub={hasGrowth ? "Spectrum share of buildings" : "Needs building data"} />
-        <Kpi tone={hasGrowth ? "watch" : "muted"} label="Growth opportunity" value={n0(kpis.totalOpportunity)} sub={hasGrowth ? "Non-Spectrum patients" : "Needs building data"} />
-        {!scoped && <Kpi tone={hasLiaison ? "ok" : "muted"} label="Liaison notes" value={hasLiaison ? kpis.liaisonNotes : "—"} sub={hasLiaison ? `${n0(kpis.liaisonHrs)} hrs worked` : "No liaison data this month"} />}
-      </section>
+      <style>{vitalsCSS}</style>
+      <VitalsHero channels={channels} bpm={bpm} admitsPerDay={admitsPerDay} beatPxMain={beatPxMain} monthText={monthLabel(month)} />
 
-      {hasGrowth && topOpp.length > 0 ? (
-        <div className="ed-card p-5 flex gap-4 items-start" style={{ margin: "20px 0 32px", background: T.tealSoft, border: "1px solid #C6E0E2" }}>
-          <PulseLine width={60} />
-          <p style={{ fontSize: 14, color: T.ink, lineHeight: 1.6, margin: 0, maxWidth: 900 }}>
-            <strong style={{ color: T.teal }}>{n0(kpis.totalOpportunity)} patients</strong> in your buildings aren't on Spectrum service. Biggest pools:{" "}
-            {topOpp.slice(0, 3).map((f, i) => (
-              <span key={f.name}>{i > 0 ? ", " : ""}<strong>{f.name}</strong> ({Math.round(f.nonSpec)}, {f.opp}%)</span>
-            ))}.
-          </p>
-        </div>
-      ) : (
-        <div style={{ margin: "20px 0 32px" }}>
-          <Empty>
-            Building-census and non-Spectrum figures aren't loaded for {monthLabel(month)} yet — those come from the growth report, not the facility reports. Census, SNF/LTC split, and RTA below are live.
-          </Empty>
+      {!scoped && <div style={{ marginTop: 16 }}><FreshnessStrip coverage={data.coverage} /></div>}
+
+      {highlights.length > 0 && (
+        <div className="vm-strip">
+          {highlights.slice(0, 4).map((h, i) => (
+            <div key={i} className="vm-chip">
+              <div className="vm-chip-ic" style={{ background: h.tint, color: h.fg }}>{h.glyph}</div>
+              <div><h4>{h.title}</h4><p>{h.body}</p></div>
+            </div>
+          ))}
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8" style={{ marginBottom: 36 }}>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8" style={{ margin: "22px 0 8px" }}>
         <div>
           <SectionLabel right={`${portfolioTrend.length} days`}>Portfolio daily census</SectionLabel>
-          <div className="ed-card p-4" style={{ height: 260 }}>
+          <div className="ed-card p-4" style={{ height: 240 }}>
             {portfolioTrend.length ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={portfolioTrend} margin={{ top: 10, right: 10, bottom: 0, left: -6 }}>
+                <AreaChart data={portfolioTrend} margin={{ top: 10, right: 10, bottom: 0, left: -6 }}>
+                  <defs><linearGradient id="vmArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={T.teal} stopOpacity={0.22} /><stop offset="100%" stopColor={T.teal} stopOpacity={0} /></linearGradient></defs>
                   <CartesianGrid stroke={T.hairline} vertical={false} />
                   <XAxis dataKey="d" tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={{ stroke: T.hairline }} tickLine={false} interval={Math.max(0, Math.floor(portfolioTrend.length / 8))} />
                   <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={false} tickLine={false} />
                   <Tooltip content={<ChartTip />} />
-                  <Line type="monotone" dataKey="census" name="Spectrum census" stroke={T.teal} strokeWidth={2.5} dot={false} />
-                </LineChart>
+                  <Area type="monotone" dataKey="census" name="Spectrum census" stroke={T.teal} strokeWidth={2.5} fill="url(#vmArea)" dot={false} />
+                </AreaChart>
               </ResponsiveContainer>
             ) : <div style={{ color: T.inkSoft, fontSize: 13, padding: 20 }}>No daily census for this month.</div>}
           </div>
         </div>
         <div>
           <SectionLabel right="Avg daily patients">Portfolio SNF vs LTC</SectionLabel>
-          <div className="ed-card p-4" style={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={mixData} margin={{ top: 10, right: 10, bottom: 0, left: -6 }}>
-                <CartesianGrid stroke={T.hairline} vertical={false} />
-                <XAxis dataKey="type" tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={{ stroke: T.hairline }} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={false} tickLine={false} />
-                <Tooltip content={<ChartTip />} />
-                <Bar dataKey="count" name="Patients" radius={[4, 4, 0, 0]} fill={T.teal} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="ed-card p-4" style={{ height: 240 }}>
+            <Donut snf={mixData?.[0]?.count} ltc={mixData?.[1]?.count} />
           </div>
         </div>
       </div>
 
-      <SectionLabel right="Ranked by non-Spectrum patients">Largest growth opportunities</SectionLabel>
-      {hasGrowth && topOpp.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {topOpp.map((f) => (
-            <button key={f.name} onClick={() => goToFacility(f.name)} className="ed-card p-5 text-left" style={{ cursor: "pointer", borderLeft: `4px solid ${toneFrom(f.opp, oppTh)}` }}>
-              <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
-                <span style={{ fontSize: 14, fontWeight: 600 }}>{f.name}</span>
-                <span className="ed-num" style={{ fontSize: 12, color: toneFrom(f.opp, oppTh), fontWeight: 600 }}>{f.opp}%</span>
+      <SectionLabel right="Portfolio pooled · vs CMS benchmark">Return-to-acute &amp; QAPI</SectionLabel>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8" style={{ marginBottom: 8 }}>
+        <div className="ed-card p-5">
+          <div className="flex items-center justify-between" style={{ marginBottom: 14 }}>
+            <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 600 }}>Return-to-acute</span>
+            <span className="ed-num" style={{ fontSize: 11.5, color: T.inkSoft }}>{n0(totalAdmits)} admits</span>
+          </div>
+          {rtaRows.length ? (
+            <>
+              <div style={{ display: "flex", gap: 18 }}>
+                <div style={{ flex: 1, textAlign: "center" }}>
+                  <Ring size={96} r={38} width={9} frac={snfRate == null ? 0 : Math.min(1, snfRate / 25)} color={rtaLineColor(snfRate)} track={T.mist}>
+                    <text x="48" y="45" textAnchor="middle" fontSize="18" fontWeight="600" fill={T.ink} fontFamily="IBM Plex Mono">{snfRate == null ? "—" : snfRate.toFixed(1) + "%"}</text>
+                    <text x="48" y="61" textAnchor="middle" fontSize="10" fill={T.inkSoft}>SNF rate</text>
+                  </Ring>
+                  <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 3 }}>{n0(rtaAgg.admits)} admits · {n0(rtaAgg.rtas)} RTA</div>
+                </div>
+                <div style={{ flex: 1, textAlign: "center" }}>
+                  <Ring size={96} r={38} width={9} frac={ltcRate == null ? 0 : Math.min(1, ltcRate / 25)} color={T.teal} track={T.mist} delay={180}>
+                    <text x="48" y="45" textAnchor="middle" fontSize="18" fontWeight="600" fill={T.ink} fontFamily="IBM Plex Mono">{ltcRate == null ? "—" : ltcRate.toFixed(1) + "%"}</text>
+                    <text x="48" y="61" textAnchor="middle" fontSize="10" fill={T.inkSoft}>LTC rate</text>
+                  </Ring>
+                  <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 3 }}>{n0(rtaAgg.ltc_admits)} admits · {n0(rtaAgg.ltc_rtas)} RTA</div>
+                </div>
               </div>
-              <div className="ed-num" style={{ fontSize: 12, color: T.inkSoft }}>{Math.round(f.nonSpec)} of {Math.round(f.building)} not on service</div>
-            </button>
-          ))}
+              <div style={{ marginTop: 12, fontSize: 10.5, color: T.inkSoft, display: "flex", justifyContent: "space-between" }}>
+                <span>Spectrum goal {thNum(rtaTh?.target) ?? "—"}%</span>
+                <span>National {thNum(rtaTh?.benchmark_national) ?? "—"}%{rtaTh?.benchmark_state_code ? ` · ${rtaTh.benchmark_state_code} ${thNum(rtaTh?.benchmark_state) ?? "—"}%` : ""}</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
+                <div className="vm-tile"><div className="ed-num" style={{ fontSize: 20, fontWeight: 600 }}>{n0(totalAdmits)}</div><div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 2 }}>Total admissions</div></div>
+                <div className="vm-tile"><div className="ed-num" style={{ fontSize: 20, fontWeight: 600 }}>{n0(rtaAgg.er)}</div><div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 2 }}>ER visits</div></div>
+              </div>
+            </>
+          ) : <Empty>No return-to-acute data for {monthLabel(month)} yet.</Empty>}
         </div>
-      ) : (
-        <Empty>No non-Spectrum / building data for {monthLabel(month)}. This populates once the growth report is loaded for the month.</Empty>
+
+        <div className="ed-card p-5">
+          <div className="flex items-center justify-between" style={{ marginBottom: 14 }}>
+            <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 600 }}>Weekly QAPI review</span>
+            {hasQapi && qapi.week && <span className="ed-num" style={{ fontSize: 11.5, color: T.inkSoft }}>week of {fmtDate(qapi.week)}</span>}
+          </div>
+          {hasQapi ? (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                <Ring size={88} r={34} width={9} frac={qRequired ? qSubmitted / qRequired : 0} color={T.teal} track={T.mist}>
+                  <text x="44" y="41" textAnchor="middle" fontSize="17" fontWeight="600" fill={T.ink} fontFamily="IBM Plex Mono">{qSubmitted}/{qRequired}</text>
+                  <text x="44" y="57" textAnchor="middle" fontSize="10" fill={T.inkSoft}>submitted</text>
+                </Ring>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, flex: 1 }}>
+                  <div className="vm-tile"><div className="ed-num" style={{ fontSize: 20, fontWeight: 600 }}>{qMdDenom ? `${qMd}/${qMdDenom}` : "—"}</div><div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 2 }}>MD present</div></div>
+                  <div className="vm-tile"><div className="ed-num" style={{ fontSize: 20, fontWeight: 600, color: qRed ? T.alert : T.ink }}>{qRed}</div><div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 2 }}>Facilities in red</div></div>
+                </div>
+              </div>
+              <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+                {openFlags.slice(0, 3).map((fl, i) => (
+                  <div key={fl.id ?? i} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", background: T.mist, borderLeft: `3px solid ${(fl.days_open || 0) >= 14 ? T.alert : T.amber}`, borderRadius: "0 8px 8px 0", padding: "9px 12px" }}>
+                    <div><div style={{ fontSize: 12, fontWeight: 600 }}>{fl.facility_name || "—"}</div><div style={{ fontSize: 10.5, color: T.inkSoft }}>{fl.question || fl.section || "Open item"}</div></div>
+                    <div style={{ fontSize: 11, color: T.inkSoft, whiteSpace: "nowrap" }}>open {fl.days_open ?? "—"}d</div>
+                  </div>
+                ))}
+                {openFlags.length === 0 && <div style={{ fontSize: 12, color: T.inkSoft }}>No open items this week.</div>}
+              </div>
+              <div style={{ display: "flex", gap: 4, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+                {qSubs.map((s, i) => (
+                  <div key={s.facility_id ?? i} title={s.facility_name} style={{ width: 16, height: 16, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#fff", fontWeight: 700, background: s.submitted ? T.teal : T.alert }}>{s.submitted ? "✓" : "✕"}</div>
+                ))}
+                <span style={{ fontSize: 10.5, color: T.inkSoft, marginLeft: 6 }}>this week by facility</span>
+              </div>
+            </>
+          ) : <Empty>QAPI weekly data isn't loaded for this view. The RTA panel and everything else above are live.</Empty>}
+        </div>
+      </div>
+
+      <SectionLabel right="Portfolio average by domain">CMS five-star</SectionLabel>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8" style={{ marginBottom: 8 }}>
+        <div className="ed-card p-5">
+          <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 600, marginBottom: 14 }}>Star rating by domain</div>
+          {rated.length ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {[["Overall", cmsOverall], ["Health inspection", cmsHi], ["Staffing", cmsStaff], ["Quality measures", cmsQm]].map(([label, v]) => (
+                <div key={label} style={{ display: "grid", gridTemplateColumns: "150px 1fr 40px", alignItems: "center", gap: 12 }}>
+                  <span style={{ fontSize: 12, color: T.ink, fontWeight: 500 }}>{label}</span>
+                  <GrowBar pct={v == null ? 0 : (v / 5) * 100} color={v == null ? T.hairline : v >= 4 ? T.teal : v >= 3 ? T.amber : T.alert} />
+                  <span className="ed-num" style={{ fontSize: 12, fontWeight: 600, textAlign: "right" }}>{v == null ? "—" : v.toFixed(1)}</span>
+                </div>
+              ))}
+            </div>
+          ) : <Empty>No CMS five-star data loaded for these facilities.</Empty>}
+        </div>
+        <div className="ed-card p-5">
+          <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 600, marginBottom: 14 }}>Staffing &amp; compliance</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div className="vm-tile"><div className="ed-num" style={{ fontSize: 20, fontWeight: 600 }}>{nurseHprd == null ? "—" : nurseHprd.toFixed(2)}</div><div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 2 }}>Total nurse HPRD</div></div>
+            <div className="vm-tile"><div className="ed-num" style={{ fontSize: 20, fontWeight: 600 }}>{rnHprd == null ? "—" : rnHprd.toFixed(2)}</div><div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 2 }}>RN HPRD</div></div>
+            <div className="vm-tile"><div className="ed-num" style={{ fontSize: 20, fontWeight: 600 }}>{rnTurn == null ? "—" : (rnTurn <= 1 ? Math.round(rnTurn * 100) : Math.round(rnTurn)) + "%"}</div><div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 2 }}>RN turnover</div></div>
+            <div className="vm-tile"><div className="ed-num" style={{ fontSize: 20, fontWeight: 600 }}>{fines ? (fines >= 1000 ? "$" + (fines / 1000).toFixed(1) + "k" : "$" + n0(fines)) : "$0"}</div><div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 2 }}>Fines (12 mo)</div></div>
+          </div>
+        </div>
+      </div>
+
+      <SectionLabel right="Click any facility to expand · sorted by census">Facilities at a glance</SectionLabel>
+      <div className="vm-fgrid">
+        {facilities.slice(0, 8).map((f) => (
+          <FacilityCard key={f.facility_id ?? f.name} f={f} qapiStatus={qStatusByFac[f.facility_id]} onOpen={goToFacility} />
+        ))}
+      </div>
+
+      {hasGrowth && topOpp.length > 0 && (
+        <>
+          <div style={{ marginTop: 28 }}>
+            <SectionLabel right="Ranked by non-Spectrum patients">Largest growth opportunities</SectionLabel>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {topOpp.map((f) => (
+              <button key={f.name} onClick={() => goToFacility(f.name)} className="ed-card p-5 text-left" style={{ cursor: "pointer", borderLeft: `4px solid ${toneFrom(f.opp, data.thresholds?.["growth.opportunity_pct"])}` }}>
+                <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>{f.name}</span>
+                  <span className="ed-num" style={{ fontSize: 12, color: toneFrom(f.opp, data.thresholds?.["growth.opportunity_pct"]), fontWeight: 600 }}>{f.opp}%</span>
+                </div>
+                <div className="ed-num" style={{ fontSize: 12, color: T.inkSoft }}>{Math.round(f.nonSpec)} of {Math.round(f.building)} not on service</div>
+              </button>
+            ))}
+          </div>
+        </>
       )}
     </>
   );
@@ -627,6 +1097,20 @@ async function loadMonthData(monthIso) {
   ]);
   const err = facs.error || fm.error || fg.error || rta.error || dc.error || lm.error || cms.error || th.error || tr.error;
   if (err) throw err;
+  // QAPI weekly rollup (Spectrum-internal). Fetched separately and tolerantly so a
+  // missing/empty QAPI table never breaks the Overview load. Filtered to the scoped
+  // facility set inside OverviewTab, so client-scoped views stay accurate.
+  let qapi = null;
+  try {
+    const [qsR, qfR] = await Promise.allSettled([
+      supabase.from("qapi_submission_status").select("facility_id, facility_name, week_of, submitted, md_attended, flag_count, status"),
+      supabase.from("qapi_open_flags").select("id, facility_name, week_of, section, question, days_open"),
+    ]);
+    const subs = qsR.status === "fulfilled" ? (qsR.value.data || []) : [];
+    const flags = qfR.status === "fulfilled" ? (qfR.value.data || []) : [];
+    const week = subs.reduce((mx, r) => (r.week_of && (!mx || r.week_of > mx) ? r.week_of : mx), null);
+    qapi = week ? { week, submissions: subs.filter((r) => r.week_of === week), flags } : null;
+  } catch { qapi = null; }
   const cmsById = {}; (cms.data || []).forEach((c) => { cmsById[c.facility_id] = c; });
   const rtaById = {}; (rta.data || []).forEach((r) => { rtaById[r.facility_id] = r; });
   const facById = {};
@@ -716,7 +1200,7 @@ async function loadMonthData(monthIso) {
     ltcRate: r.ltc_admits ? (r.ltc_rtas / r.ltc_admits) * 100 : null,
   })).sort((a, b) => (b.snfRate ?? -1) - (a.snfRate ?? -1));
   return {
-    facilities, portfolioTrend, rta: rtaRows, liaisons, hasGrowth, hasLiaison, mom, coverage,
+    facilities, portfolioTrend, rta: rtaRows, liaisons, hasGrowth, hasLiaison, mom, coverage, qapi,
     thresholds: Object.fromEntries((th.data || []).map((t) => [t.metric_key, t])),
     mixData: [{ type: "SNF", count: Math.round(totalSnf) }, { type: "LTC", count: Math.round(totalLtc) }],
     kpis: { totalCensus, totalBuilding, totalOpportunity, captureRate, liaisonNotes, liaisonHrs },
