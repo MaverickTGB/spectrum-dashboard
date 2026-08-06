@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase.js";
 import { T, fontStyles, Banner } from "../ui.jsx";
 
@@ -28,7 +29,12 @@ export default function Admin() {
   return (
     <div className="ed-ui" style={{ minHeight: "100vh", background: T.mist, color: T.ink, padding: "24px 32px" }}>
       <style>{fontStyles}</style>
-      <h1 style={{ fontSize: 26, fontWeight: 800, margin: "0 0 16px" }}>Access administration</h1>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", margin: "0 0 16px" }}>
+        <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>Access administration</h1>
+        <Link to="/admin/qapi" className="ed-btn ed-btn-ghost" style={{ padding: "6px 12px", textDecoration: "none" }}>
+          QAPI submissions →
+        </Link>
+      </div>
       {err && <Banner onClose={() => setErr(null)}>{err}</Banner>}
       <div className="ed-card" style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
