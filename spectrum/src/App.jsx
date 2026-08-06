@@ -7,6 +7,7 @@ import RequestAccess from "./routes/RequestAccess.jsx";
 import Executive from "./routes/Executive.jsx";
 import Admin from "./routes/Admin.jsx";
 import MedicalDirector from "./routes/MedicalDirector.jsx";
+import QapiAdmin from "./routes/QapiAdmin.jsx";
 
 function Protected({ children, adminOnly = false, staffOnly = false }) {
   const { session, profile, loading, isAdmin, isApproved } = useAuth();
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="/request-access" element={<RequestAccess />} />
         <Route path="/admin" element={<Protected adminOnly><Admin /></Protected>} />
         <Route path="/admin/md-time" element={<Protected staffOnly><MedicalDirector /></Protected>} />
+        <Route path="/admin/qapi" element={<Protected adminOnly><QapiAdmin /></Protected>} />
         <Route path="/" element={<Protected><Executive /></Protected>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
