@@ -209,6 +209,15 @@ function SubmissionEditor({ sub, metrics, onClose, onSaved }) {
   const [values, setValues] = useState({});   // metric_id -> { numerator, denominator }
   const [flags, setFlags] = useState([]);     // [{section,question,answer,owner,resolved}]
 
+  // narrative (PHI) — a separate, individually-logged write path, NOT part of the revise RPC
+  const [narrOpen, setNarrOpen] = useState(false);
+  const [narrLoading, setNarrLoading] = useState(false);
+  const [narrSaving, setNarrSaving] = useState(false);
+  const [narrErr, setNarrErr] = useState("");
+  const [narrBody, setNarrBody] = useState("");
+  const [history, setHistory] = useState(null);
+  const [histLoading, setHistLoading] = useState(false);
+
   useEffect(() => {
     (async () => {
       setLoading(true); setErr("");
@@ -271,6 +280,33 @@ function SubmissionEditor({ sub, metrics, onClose, onSaved }) {
     setSaving(false);
     if (error) { setErr(error.message); setConfirm(false); return; }
     onSaved(data);
+  }
+
+  // narrative loads only on explicit request, so each PHI read is a deliberate, logged action
+  async function loadNarrative() {
+    setNarrLoading(true); setNarrErr(""); setNarrOpen(true);
+    const { data, error } = await supabase.rpc("qapi_get_narrative", { p_submission_id: sub.id });
+    setNarrLoading(false);
+    if (error) { setNarrErr(error.message); return; }
+    const row = Array.isArray(data) ? data[0] : data;
+    setNarrBody(row?.body ?? "");
+  }
+  async function saveNarrative() {
+    setNarrSaving(true); setNarrErr("");
+    const { data, error } = await supabase.rpc("qapi_set_narrative", {
+      p_submission_id: sub.id, p_body: narrBody,
+    });
+    setNarrSaving(false);
+    if (error) { setNarrErr(error.message); return; }
+    if (data === false) { setNarrErr("Not authorized to edit narrative."); return; }
+    if (history) loadHistory();  // refresh history if it's open
+  }
+  async function loadHistory() {
+    setHistLoading(true); setNarrErr("");
+    const { data, error } = await supabase.rpc("qapi_get_narrative_history", { p_submission_id: sub.id });
+    setHistLoading(false);
+    if (error) { setNarrErr(error.message); return; }
+    setHistory(data || []);
   }
 
   const bySection = useMemo(() => {
@@ -424,6 +460,57 @@ function SubmissionEditor({ sub, metrics, onClose, onSaved }) {
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* narrative (PHI) — isolated, individually-logged access path */}
+          <div style={{ ...S.card, marginTop: 12, borderColor: C.amber }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 700 }}>Clinical narrative</div>
+              <span style={S.badge(C.amberBg, C.amber)}>PHI — access logged</span>
+            </div>
+            <div style={{ ...S.muted, marginBottom: 10 }}>
+              Free-text narrative may contain protected health information. Every view and every edit
+              is recorded to an append-only audit log, and edits keep the full prior version.
+            </div>
+            {!narrOpen ? (
+              <button style={S.btn} onClick={loadNarrative}>View / edit narrative</button>
+            ) : narrLoading ? (
+              <div style={S.muted}>Loading…</div>
+            ) : (
+              <>
+                <textarea
+                  style={{ ...S.input, width: "100%", minHeight: 140, fontFamily: "inherit", resize: "vertical" }}
+                  disabled={readOnly || narrSaving}
+                  value={narrBody}
+                  placeholder="No narrative recorded yet."
+                  onChange={(e) => setNarrBody(e.target.value)}
+                />
+                {narrErr && <div style={{ ...S.card, borderColor: C.red, color: C.red, marginTop: 10 }}>Error: {narrErr}</div>}
+                {!readOnly && (
+                  <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <button style={S.btnPrimary} disabled={narrSaving} onClick={saveNarrative}>
+                      {narrSaving ? "Saving…" : "Save narrative"}
+                    </button>
+                    <button style={S.btn} disabled={histLoading} onClick={loadHistory}>
+                      {histLoading ? "Loading…" : "View edit history"}
+                    </button>
+                    <span style={S.muted}>Saved separately from the metric revision above.</span>
+                  </div>
+                )}
+                {history && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Edit history ({history.length})</div>
+                    {history.length === 0 && <div style={S.muted}>No versions recorded.</div>}
+                    {history.map((h) => (
+                      <div key={h.version_id} style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                        <div style={{ ...S.muted, marginBottom: 4 }}>{h.action} · {fmtTs(h.edited_at)}</div>
+                        <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{h.body}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {err && <div style={{ ...S.card, borderColor: C.red, color: C.red, marginTop: 12 }}>Error: {err}</div>}
