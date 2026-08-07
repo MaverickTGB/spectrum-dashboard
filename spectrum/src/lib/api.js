@@ -44,3 +44,19 @@ export async function listOrganizations() {
   if (error) throw error;
   return data || [];
 }
+
+/** Send a password-recovery email. redirectTo must be in the Supabase allow-list. */
+export async function requestPasswordReset(email) {
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/reset-password`,
+  });
+  if (error) throw error;
+  return data;
+}
+
+/** Set a new password for the currently-authenticated (recovery) session. */
+export async function setNewPassword(password) {
+  const { data, error } = await supabase.auth.updateUser({ password });
+  if (error) throw error;
+  return data;
+}
