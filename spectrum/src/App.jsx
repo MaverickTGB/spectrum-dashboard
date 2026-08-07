@@ -4,11 +4,11 @@ import { AuthProvider, useAuth } from "./lib/auth.jsx";
 import { Loading } from "./ui.jsx";
 import Login from "./routes/Login.jsx";
 import RequestAccess from "./routes/RequestAccess.jsx";
+import ResetPassword from "./routes/ResetPassword.jsx";
 import Executive from "./routes/Executive.jsx";
 import Admin from "./routes/Admin.jsx";
 import MedicalDirector from "./routes/MedicalDirector.jsx";
 import QapiAdmin from "./routes/QapiAdmin.jsx";
-
 function Protected({ children, adminOnly = false, staffOnly = false }) {
   const { session, profile, loading, isAdmin, isApproved } = useAuth();
   const isStaff = ["admin", "manager"].includes(profile?.role);
@@ -19,7 +19,6 @@ function Protected({ children, adminOnly = false, staffOnly = false }) {
   if (staffOnly && !isStaff) return <Navigate to="/" replace />;
   return children;
 }
-
 function PendingScreen({ status }) {
   const msg = status === "rejected"
     ? "Your access request was not approved. Contact your administrator."
@@ -39,13 +38,13 @@ function PendingScreen({ status }) {
     </div>
   );
 }
-
 export default function App() {
   return (
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/request-access" element={<RequestAccess />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/admin" element={<Protected adminOnly><Admin /></Protected>} />
         <Route path="/admin/md-time" element={<Protected staffOnly><MedicalDirector /></Protected>} />
         <Route path="/admin/qapi" element={<Protected adminOnly><QapiAdmin /></Protected>} />
