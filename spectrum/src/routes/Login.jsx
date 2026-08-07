@@ -150,9 +150,11 @@ export default function Login() {
             {busy ? "Signing in…" : "Sign in"}
           </button>
 
-          <p style={{ fontSize: 12.5, color: T.inkSoft, textAlign: "center", marginTop: 18, marginBottom: 0 }}>
-            Need access? <Link className="lg-link" to="/request-access">Request access</Link>
-          </p>
+        <p style={{ fontSize: 12.5, color: T.inkSoft, textAlign: "center", marginTop: 18, marginBottom: 0 }}>
+          <Link className="lg-link" to="/reset-password">Forgot password?</Link>
+          <span style={{ margin: "0 8px", color: T.hairline }}>·</span>
+          <Link className="lg-link" to="/request-access">Request access</Link>
+        </p>
         </form>
 
         <p className="lg-num" style={{ fontSize: 10.5, textAlign: "center", color: "#6E93AB", marginTop: 18, letterSpacing: "0.04em" }}>
