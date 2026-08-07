@@ -15,6 +15,7 @@
 // path your other components use (open Qapi.jsx and copy its exact import).
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { supabase } from "../lib/supabase.js"; // matches Qapi.jsx
+import { Link } from "react-router-dom";
 
 // ---------------------------------------------------------------- styling
 const C = {
@@ -145,6 +146,9 @@ export default function QapiAdmin() {
           Show superseded (history)
         </label>
         <button style={S.btn} onClick={loadList}>Refresh</button>
+<Link to="/admin/qapi-exceptions" style={{ ...S.btn, textDecoration: "none", color: C.ink }}>
+  Excused weeks
+</Link>
         <span style={{ ...S.muted, marginLeft: "auto" }}>{visible.length} shown</span>
       </div>
 
