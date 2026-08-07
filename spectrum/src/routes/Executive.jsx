@@ -1368,6 +1368,7 @@ function ExecutiveInner() {
           {isAdmin && <a href="/admin" style={{ fontSize: 12.5, fontWeight: 600, color: T.teal, textDecoration: "none", padding: "6px 14px", border: `1px solid ${T.hairline}`, borderRadius: 99 }}>Approve users</a>}
           <a href="/admin/md-time" style={{ fontSize: 12.5, fontWeight: 600, color: T.teal, textDecoration: "none", padding: "6px 14px", border: `1px solid ${T.hairline}`, borderRadius: 99 }}>MD time record</a>
           {isAdmin && <a href="/admin/qapi" style={{ fontSize: 12.5, fontWeight: 600, color: T.teal, textDecoration: "none", padding: "6px 14px", border: `1px solid ${T.hairline}`, borderRadius: 99 }}>QAPI submissions</a>}
+          {isAdmin && <a href="/admin/qapi-exceptions" style={{ fontSize: 12.5, fontWeight: 600, color: T.teal, textDecoration: "none", padding: "6px 14px", border: `1px solid ${T.hairline}`, borderRadius: 99 }}>Excused weeks</a>}
         </div>
       )}
 
