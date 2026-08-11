@@ -1387,7 +1387,7 @@ function ExecutiveInner() {
             {tab === "Analysis" && <AnalysisTab />}
             {tab === "QAPI" && <><QapiScorecard /><div style={{ marginTop: 24 }}><QapiTab /></div></>}
             {tab === "Team" && <TeamTab data={data} month={month} />}
-          </>
+          </ErrorBoundary>
         )}
 
         <footer className="flex items-center justify-between" style={{ marginTop: 48, borderTop: `2px solid ${T.teal}`, paddingTop: 14 }}>
