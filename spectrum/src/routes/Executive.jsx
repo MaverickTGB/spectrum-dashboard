@@ -10,6 +10,7 @@ import { QapiTab, QapiFacilityPanel } from "./Qapi.jsx";
 import { HeatmapTab } from "./Heatmap.jsx";
 import { AnalysisTab } from "./Analysis.jsx";
 import QapiScorecard from "./QapiScorecard.jsx";
+import ErrorBoundary from "./ErrorBoundary.jsx";
 import { ScopeProvider, ScopeSelector, ScopeBanner, useScope, applyScope } from "../lib/scope.jsx";
 
 /* ————————————————————— Spectrum design tokens ————————————————————— */
