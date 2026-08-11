@@ -10,6 +10,7 @@ import Admin from "./routes/Admin.jsx";
 import MedicalDirector from "./routes/MedicalDirector.jsx";
 import QapiAdmin from "./routes/QapiAdmin.jsx";
 import QapiExceptions from "./routes/QapiExceptions.jsx";
+import Facilities from "./routes/Facilities.jsx";
 function Protected({ children, adminOnly = false, staffOnly = false }) {
   const { session, profile, loading, isAdmin, isApproved } = useAuth();
   const isStaff = ["admin", "manager"].includes(profile?.role);
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="/admin/qapi-exceptions" element={<Protected adminOnly><QapiExceptions /></Protected>} />
         <Route path="/" element={<Protected><Executive /></Protected>} />
         <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/admin/facilities" element={<Protected adminOnly><Facilities /></Protected>} />
       </Routes>
     </AuthProvider>
   );
