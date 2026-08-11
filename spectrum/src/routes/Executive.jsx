@@ -137,7 +137,10 @@ const KPI_TONE = {
   ok:    { bar: T.teal, tint: "transparent", glyph: "" },
   muted: { bar: T.hairline, tint: "transparent", glyph: "" },
 };
-const Kpi = ({ label, value, sub, good = true, tone }) => {
+const Kpi = ({ label, value, sub, good = true, tone, delta = null, deltaUnit = "", higherBetter = true }) => {
+  const badge = delta == null ? null : (
+    <div style={{ marginTop: 6 }}><MoMDelta delta={delta} unit={deltaUnit} higherBetter={higherBetter} /></div>
+  );
   // Legacy path: no `tone` prop -> identical to the original component.
   if (!tone) {
     return (
@@ -145,6 +148,7 @@ const Kpi = ({ label, value, sub, good = true, tone }) => {
         <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.inkSoft, marginBottom: 10, fontWeight: 500 }}>{label}</div>
         <div className="ed-display" style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{value}</div>
         <div className="ed-num" style={{ fontSize: 11.5, marginTop: 8, color: good ? T.teal : T.amber }}>{sub}</div>
+        {badge}
       </div>
     );
   }
@@ -159,6 +163,7 @@ const Kpi = ({ label, value, sub, good = true, tone }) => {
       </div>
       <div className="ed-display" style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, color: tone === "muted" ? T.inkSoft : T.ink }}>{value}</div>
       <div className="ed-num" style={{ fontSize: 11.5, marginTop: 8, color: flagged ? t.bar : T.inkSoft }}>{sub}</div>
+      {badge}
     </div>
   );
 };
@@ -630,6 +635,7 @@ function OverviewTab({ data, month, goToFacility }) {
   const captureFrac = kpis.captureRate == null ? 0 : kpis.captureRate / 100;
   const censusDelta = data.mom?.census?.delta;
   const censusPct = data.mom?.census && data.mom.census.prev ? (data.mom.census.delta / data.mom.census.prev) * 100 : null;
+  const captureDelta = data.mom?.capture?.delta;
 
   // Hero channels.
   const snfChColor = snfTone === "alert" ? vmColor.alarm : snfTone === "watch" ? vmColor.watch : vmColor.ok;
@@ -645,7 +651,11 @@ function OverviewTab({ data, month, goToFacility }) {
       key: "capture", ch: "#7FD9C6", wave: "pleth", waveColor: "#7FD9C6",
       label: "Capture rate",
       value: <span className="vm-gaugewrap"><Ring size={46} r={18} width={5.5} frac={captureFrac} color="#37B4BE" track="rgba(255,255,255,.12)" /><span className="vm-kval" style={{ fontSize: 27 }}><Decode value={kpis.captureRate} suffix="%" /></span></span>,
-      sub: hasGrowth ? <span>Spectrum share of buildings</span> : <span>Needs building data</span>,
+      sub: hasGrowth
+        ? (captureDelta == null
+            ? <span>Spectrum share of buildings</span>
+            : <><span className={`vm-delta ${captureDelta >= 0 ? "up" : "down"}`}>{captureDelta >= 0 ? "▲" : "▼"} {Math.abs(captureDelta).toFixed(1)} pts</span> vs prior month</>)
+        : <span>Needs building data</span>,
     },
     {
       key: "rta", ch: snfChColor, wave: "ecgfast", waveColor: snfChColor, alarm: snfTone === "watch" || snfTone === "alert", alarmTag: snfTone === "alert" ? "▲ high" : "▲ watch",
@@ -1043,12 +1053,11 @@ function RtaTab({ data, month, goToFacility }) {
     <>
       <div className="vm-secbar"><span className="vm-tick2" /><h2>Return-to-acute</h2><span className="vm-secright">{rows.length} facilities · {monthLabel(month)}</span></div>
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginBottom: 28 }}>
-        <Kpi tone={toneName(snfRateNum, snfTh)} label="SNF RTA rate" value={snfRateNum == null ? "—" : snfRateNum.toFixed(1) + "%"} sub={`${tot.rtas} of ${tot.admits} SNF admits · goal ${thNum(snfTh?.target) ?? "—"}%`} />
+        <Kpi tone={toneName(snfRateNum, snfTh)} label="SNF RTA rate" value={snfRateNum == null ? "—" : snfRateNum.toFixed(1) + "%"} sub={`${tot.rtas} of ${tot.admits} SNF admits · goal ${thNum(snfTh?.target) ?? "—"}%`} delta={data.mom?.snfRta?.delta} deltaUnit=" pts" higherBetter={false} />
         <Kpi tone={toneName(ltcRateNum, ltcTh)} label="LTC RTA rate" value={ltcRateNum == null ? "—" : ltcRateNum.toFixed(1) + "%"} sub={`${tot.ltc_rtas} of ${tot.ltc_admits} LTC admits`} />
-        <Kpi tone="muted" label="Total admissions" value={n0(tot.admits + tot.ltc_admits)} sub="SNF + LTC" />
-        <Kpi tone="muted" label="ER visits" value={n0(tot.er)} sub="Across portfolio" />
+        <Kpi tone="muted" label="Total admissions" value={n0(tot.admits + tot.ltc_admits)} sub="SNF + LTC" delta={data.mom?.admits?.delta} higherBetter={true} />
+        <Kpi tone="muted" label="ER visits" value={n0(tot.er)} sub="Across portfolio" delta={data.mom?.er?.delta} higherBetter={false} />
       </section>
-
       <SectionLabel right="Click a facility to drill in">Return-to-acute by facility</SectionLabel>
       <div className="ed-card" style={{ overflowX: "auto" }}>
         <table className="w-full" style={{ borderCollapse: "collapse", minWidth: 820 }}>
@@ -1095,10 +1104,10 @@ function TeamTab({ data, month }) {
   return (
     <>
       <div className="vm-secbar"><span className="vm-tick2" /><h2>Team · liaison performance</h2><span className="vm-secright">{monthLabel(month)}</span></div>
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginBottom: 28 }}>
-        <Kpi tone="muted" label="Liaison hours" value={n0(hrs)} sub={`${liaisons.length} liaisons`} />
-        <Kpi tone={otHot ? "watch" : "ok"} label="Overtime hours" value={n1(ot)} sub="Month to date" />
-        <Kpi tone="muted" label="Notes completed" value={notes} sub="Across the team" />
+     <section className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginBottom: 28 }}>
+        <Kpi tone="muted" label="Liaison hours" value={n0(hrs)} sub={`${liaisons.length} liaisons`} delta={data.mom?.liaisonHours?.delta} higherBetter={true} />
+        <Kpi tone={otHot ? "watch" : "ok"} label="Overtime hours" value={n1(ot)} sub="Month to date" delta={data.mom?.liaisonOt?.delta} higherBetter={false} />
+        <Kpi tone="muted" label="Notes completed" value={notes} sub="Across the team" delta={data.mom?.liaisonNotes?.delta} higherBetter={true} />
         <Kpi tone="ok" label="Notes per hour" value={hrs ? (notes / hrs).toFixed(2) : "—"} sub="Team average" />
       </section>
       <SectionLabel right={`Monthly totals · ${monthLabel(month)}`}>Liaison performance</SectionLabel>
@@ -1230,8 +1239,7 @@ async function loadMonthData(monthIso) {
   const totalSnf = sum(facilities, "snf"), totalLtc = sum(facilities, "ltc");
   const trailMonths = Object.keys(monthTotals).sort();
   const curIdx = trailMonths.indexOf(start);
-  const prevKey = curIdx > 0 ? trailMonths[curIdx - 1] : null;
-  const mom = { census: prevKey != null ? { prev: monthTotals[prevKey], delta: totalCensus - monthTotals[prevKey] } : null };
+const prevKey = curIdx > 0 ? trailMonths[curIdx - 1] : null;
   // data-coverage for the freshness strip (numerators = distinct facilities present per source)
   const activeFacs = (facs.data || []).filter((f) => f.active !== false);
   const distinctIds = (rows) => new Set((rows || []).map((r) => r.facility_id)).size;
@@ -1259,7 +1267,54 @@ async function loadMonthData(monthIso) {
     admits: r.admits, rtas: r.rtas, ltc_admits: r.ltc_admits, ltc_rtas: r.ltc_rtas, er: r.er_visits,
     snfRate: r.admits ? (r.rtas / r.admits) * 100 : null,
     ltcRate: r.ltc_admits ? (r.ltc_rtas / r.ltc_admits) * 100 : null,
-  })).sort((a, b) => (b.snfRate ?? -1) - (a.snfRate ?? -1));
+ })).sort((a, b) => (b.snfRate ?? -1) - (a.snfRate ?? -1));
+
+  // —— Month-over-month deltas, vs the previous month that has data (prevKey) ——
+  const curRta = rtaRows.reduce((a, r) => ({
+    admits: a.admits + (r.admits || 0) + (r.ltc_admits || 0),
+    snfAdmits: a.snfAdmits + (r.admits || 0),
+    snfRtas: a.snfRtas + (r.rtas || 0),
+    er: a.er + (r.er || 0),
+  }), { admits: 0, snfAdmits: 0, snfRtas: 0, er: 0 });
+  const curSnfRate = curRta.snfAdmits ? (curRta.snfRtas / curRta.snfAdmits) * 100 : null;
+  const curOt = liaisons.reduce((s, l) => s + (l.ot || 0), 0);
+  const round1 = (x) => Math.round(x * 10) / 10;
+
+  const mom = { census: prevKey != null ? { prev: monthTotals[prevKey], delta: totalCensus - monthTotals[prevKey] } : null };
+  if (prevKey) {
+    const [pfg, prt, plm] = await Promise.all([
+      supabase.from("facility_growth").select("avg_building_census").eq("month", prevKey),
+      supabase.from("rta_monthly").select("admits, rtas, ltc_admits, ltc_rtas, er_visits").eq("month", prevKey),
+      supabase.from("liaison_monthly").select("hours, ot_hours, notes_count").eq("month", prevKey),
+    ]);
+    // Capture: prev census (from trailing window) over prev building total.
+    const prevBuilding = (pfg.data || []).reduce((s, r) => s + (r.avg_building_census || 0), 0);
+    const prevCapture = prevBuilding ? round1((monthTotals[prevKey] / prevBuilding) * 100) : null;
+    if (captureRate != null && prevCapture != null) mom.capture = { prev: prevCapture, delta: round1(captureRate - prevCapture) };
+    // RTA / admissions / ER — only if the prior month actually had RTA rows.
+    if ((prt.data || []).length) {
+      const p = prt.data.reduce((a, r) => ({
+        admits: a.admits + (r.admits || 0) + (r.ltc_admits || 0),
+        snfAdmits: a.snfAdmits + (r.admits || 0),
+        snfRtas: a.snfRtas + (r.rtas || 0),
+        er: a.er + (r.er_visits || 0),
+      }), { admits: 0, snfAdmits: 0, snfRtas: 0, er: 0 });
+      const prevSnfRate = p.snfAdmits ? (p.snfRtas / p.snfAdmits) * 100 : null;
+      if (curSnfRate != null && prevSnfRate != null) mom.snfRta = { prev: prevSnfRate, delta: round1(curSnfRate - prevSnfRate) };
+      mom.admits = { prev: p.admits, delta: curRta.admits - p.admits };
+      mom.er = { prev: p.er, delta: curRta.er - p.er };
+    }
+    // Liaison — only if the prior month had liaison rows.
+    if ((plm.data || []).length) {
+      const ph = plm.data.reduce((s, r) => s + (r.hours || 0), 0);
+      const po = plm.data.reduce((s, r) => s + (r.ot_hours || 0), 0);
+      const pn = plm.data.reduce((s, r) => s + (r.notes_count || 0), 0);
+      mom.liaisonHours = { prev: ph, delta: round1(liaisonHrs - ph) };
+      mom.liaisonOt = { prev: po, delta: round1(curOt - po) };
+      mom.liaisonNotes = { prev: pn, delta: liaisonNotes - pn };
+    }
+  }
+
   return {
     facilities, portfolioTrend, rta: rtaRows, liaisons, hasGrowth, hasLiaison, mom, coverage, qapi,
     thresholds: Object.fromEntries((th.data || []).map((t) => [t.metric_key, t])),
