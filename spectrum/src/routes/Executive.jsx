@@ -1379,7 +1379,7 @@ function ExecutiveInner() {
         {err && !loading && <Empty>Couldn't load data: {err}</Empty>}
         {!loading && !err && !data && <Empty>No monthly data has been committed yet. Run the aggregation worker, then refresh.</Empty>}
         {!loading && !err && data && (
-          <>
+          <ErrorBoundary resetKey={tab} label={tab}>
             {tab === "Overview" && <OverviewTab data={data} month={month} goToFacility={goToFacility} />}
             {tab === "Heatmap" && <HeatmapTab data={data} month={month} goToFacility={goToFacility} />}
             {tab === "Facilities" && <FacilitiesTab data={data} selectedName={selectedName} setSelectedName={setSelectedName} month={month} />}
