@@ -15,7 +15,13 @@ const mondayOf = (s) => {
   return isoOf(dt);
 };
 
-const BLANK = { name: "", orgId: "", code: "", ccn: "", qapiRequired: true, startWeek: "" };
+const BLANK = { name: "", orgId: "", code: "", ccn: "", facilityType: "snf", qapiRequired: true, startWeek: "" };
+
+const FACILITY_TYPES = [
+  { value: "snf", label: "Skilled Nursing" },
+  { value: "al", label: "Assisted Living" },
+];
+const typeLabel = (t) => (FACILITY_TYPES.find((x) => x.value === t)?.label || t || "—");
 
 function qapiStatus(f) {
   if (!f.qapi_required) return "Not required";
@@ -42,7 +48,7 @@ export default function Facilities() {
     const [o, f] = await Promise.all([
       supabase.from("organizations").select("id, display_name, org_type").order("display_name"),
       supabase.from("facilities")
-        .select("id, name, code, ccn, qapi_required, qapi_start_week, org_id, active")
+        .select("id, name, code, ccn, facility_type, qapi_required, qapi_start_week, org_id, active")
         .order("name"),
     ]);
     if (o.error) setErr(o.error.message);
@@ -79,13 +85,14 @@ export default function Facilities() {
       org_id: Number(form.orgId),
       code,
       ccn: ccn || null,
+      facility_type: form.facilityType,
       qapi_required: form.qapiRequired,
       qapi_start_week: form.startWeek ? mondayOf(form.startWeek) : null,
     };
     const { data, error } = await supabase
       .from("facilities")
       .insert(payload)
-      .select("id, name, code, ccn, qapi_required, qapi_start_week, org_id")
+      .select("id, name, code, ccn, facility_type, qapi_required, qapi_start_week, org_id")
       .single();
     setBusy(false);
 
@@ -155,6 +162,16 @@ export default function Facilities() {
           </select>
         </div>
 
+        <div style={{ marginBottom: 14 }}>
+          <Label>Facility type</Label>
+          <select className="ed-in" value={form.facilityType} onChange={set("facilityType")}>
+            {FACILITY_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
+          <div style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 6 }}>Assisted living skips the skilled-census requirement in the workers.</div>
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 14 }}>
           <div>
             <Label>Facility code</Label>
@@ -193,7 +210,7 @@ export default function Facilities() {
         <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${T.hairline}`, background: "#F7FAFB" }}>
-              {["Facility", "Partner", "Code", "CCN", "QAPI"].map((h) => (
+              {["Facility", "Partner", "Type", "Code", "CCN", "QAPI"].map((h) => (
                 <th key={h} style={{ textAlign: "left", padding: "12px 16px", fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 600 }}>{h}</th>
               ))}
             </tr>
@@ -203,13 +220,14 @@ export default function Facilities() {
               <tr key={f.id} style={{ borderBottom: `1px solid ${T.hairline}`, opacity: f.active ? 1 : 0.5 }}>
                 <td style={{ padding: "11px 16px", fontSize: 13.5, fontWeight: 600 }}>{f.name}</td>
                 <td style={{ padding: "11px 16px", fontSize: 13, color: T.inkSoft }}>{orgName[f.org_id] || "—"}</td>
+                <td style={{ padding: "11px 16px", fontSize: 12.5, color: T.inkSoft }}>{typeLabel(f.facility_type)}</td>
                 <td className="ed-num" style={{ padding: "11px 16px", fontSize: 12.5 }}>{f.code || "—"}</td>
                 <td className="ed-num" style={{ padding: "11px 16px", fontSize: 12.5, color: f.ccn ? T.ink : T.amber }}>{f.ccn || "—"}</td>
                 <td style={{ padding: "11px 16px", fontSize: 12.5, color: T.inkSoft }}>{qapiStatus(f)}</td>
               </tr>
             ))}
             {!facilities.length && (
-              <tr><td colSpan={5} style={{ padding: 24, textAlign: "center", color: T.inkSoft, fontSize: 13 }}>No facilities yet.</td></tr>
+              <tr><td colSpan={6} style={{ padding: 24, textAlign: "center", color: T.inkSoft, fontSize: 13 }}>No facilities yet.</td></tr>
             )}
           </tbody>
         </table>
