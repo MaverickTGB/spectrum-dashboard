@@ -463,6 +463,11 @@ function Donut({ snf, ltc }) {
 
 const vmColor = { alarm: "#F0A594", watch: "#F0CE8B", ok: "#37B4BE" };
 const rtaLineColor = (r) => (r == null ? T.inkSoft : r <= 12 ? T.teal : r <= 21.3 ? T.amber : T.alert);
+/* Every RTA rate divides by FACILITY admits (skilled + LTC), matching the
+   monthly facility report. Falls back to the sum when facility_admits is
+   absent on older rows. */
+const rtaDenom = (r) => (r ? (r.facility_admits ?? ((r.admits || 0) + (r.ltc_admits || 0))) || null : null);
+const rtaPct = (num, den) => (den && num != null ? (num / den) * 100 : null);
 
 // The dark vitals-monitor hero: boot sweep, live ECG, and per-channel traces.
 function VitalsHero({ channels, bpm, admitsPerDay, beatPxMain, monthText }) {
@@ -594,10 +599,12 @@ function OverviewTab({ data, month, goToFacility }) {
   const rtaAgg = rtaRows.reduce((a, r) => ({
     admits: a.admits + (r.admits || 0), rtas: a.rtas + (r.rtas || 0),
     ltc_admits: a.ltc_admits + (r.ltc_admits || 0), ltc_rtas: a.ltc_rtas + (r.ltc_rtas || 0), er: a.er + (r.er || 0),
-  }), { admits: 0, rtas: 0, ltc_admits: 0, ltc_rtas: 0, er: 0 });
-  const snfRate = rtaAgg.admits ? (rtaAgg.rtas / rtaAgg.admits) * 100 : null;
-  const ltcRate = rtaAgg.ltc_admits ? (rtaAgg.ltc_rtas / rtaAgg.ltc_admits) * 100 : null;
-  const totalAdmits = rtaAgg.admits + rtaAgg.ltc_admits;
+    denom: a.denom + (rtaDenom(r) || 0), nonshs: a.nonshs + (r.nonshs_rtas || 0),
+  }), { admits: 0, rtas: 0, ltc_admits: 0, ltc_rtas: 0, er: 0, denom: 0, nonshs: 0 });
+  const totalAdmits = rtaAgg.denom;
+  const snfRate = rtaPct(rtaAgg.rtas, totalAdmits);
+  const ltcRate = rtaPct(rtaAgg.ltc_rtas, totalAdmits);
+  const spectrumRate = rtaPct(rtaAgg.rtas + rtaAgg.ltc_rtas, totalAdmits);
   const admitsPerDay = totalAdmits ? totalAdmits / daysInMonth : null;
   const rtaTh = data.thresholds?.["rta.snf"];
   const snfTone = toneName(snfRate, rtaTh);
@@ -749,14 +756,14 @@ function OverviewTab({ data, month, goToFacility }) {
                     <text x="48" y="45" textAnchor="middle" fontSize="18" fontWeight="600" fill={T.ink} fontFamily="IBM Plex Mono">{snfRate == null ? "—" : snfRate.toFixed(1) + "%"}</text>
                     <text x="48" y="61" textAnchor="middle" fontSize="10" fill={T.inkSoft}>SNF rate</text>
                   </Ring>
-                  <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 3 }}>{n0(rtaAgg.admits)} admits · {n0(rtaAgg.rtas)} RTA</div>
+                  <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 3 }}>{n0(totalAdmits)} facility admits · {n0(rtaAgg.rtas)} RTA</div>
                 </div>
                 <div style={{ flex: 1, textAlign: "center" }}>
                   <Ring size={96} r={38} width={9} frac={ltcRate == null ? 0 : Math.min(1, ltcRate / 25)} color={T.teal} track={T.mist} delay={180}>
                     <text x="48" y="45" textAnchor="middle" fontSize="18" fontWeight="600" fill={T.ink} fontFamily="IBM Plex Mono">{ltcRate == null ? "—" : ltcRate.toFixed(1) + "%"}</text>
                     <text x="48" y="61" textAnchor="middle" fontSize="10" fill={T.inkSoft}>LTC rate</text>
                   </Ring>
-                  <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 3 }}>{n0(rtaAgg.ltc_admits)} admits · {n0(rtaAgg.ltc_rtas)} RTA</div>
+                  <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 3 }}>{n0(totalAdmits)} facility admits · {n0(rtaAgg.ltc_rtas)} RTA</div>
                 </div>
               </div>
               <div style={{ marginTop: 12, fontSize: 10.5, color: T.inkSoft, display: "flex", justifyContent: "space-between" }}>
@@ -1045,8 +1052,10 @@ function RtaTab({ data, month, goToFacility }) {
     ltc_admits: a.ltc_admits + (r.ltc_admits || 0), ltc_rtas: a.ltc_rtas + (r.ltc_rtas || 0),
     er: a.er + (r.er || 0),
   }), { admits: 0, rtas: 0, ltc_admits: 0, ltc_rtas: 0, er: 0 });
-  const snfRateNum = tot.admits ? (tot.rtas / tot.admits) * 100 : null;
-  const ltcRateNum = tot.ltc_admits ? (tot.ltc_rtas / tot.ltc_admits) * 100 : null;
+  const totDenom = tot.admits + tot.ltc_admits;
+  const snfRateNum = rtaPct(tot.rtas, totDenom);
+  const ltcRateNum = rtaPct(tot.ltc_rtas, totDenom);
+  const spectrumRateNum = rtaPct(tot.rtas + tot.ltc_rtas, totDenom);
   const snfTh = data.thresholds?.["rta.snf"];
   const ltcTh = data.thresholds?.["rta.ltc_pct"];
   const rateColor = (r, th) => (r == null ? T.inkSoft : toneFrom(r, th));
@@ -1055,8 +1064,8 @@ function RtaTab({ data, month, goToFacility }) {
     <>
       <div className="vm-secbar"><span className="vm-tick2" /><h2>Return-to-acute</h2><span className="vm-secright">{rows.length} facilities · {monthLabel(month)}</span></div>
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ marginBottom: 28 }}>
-        <Kpi tone={toneName(snfRateNum, snfTh)} label="SNF RTA rate" value={snfRateNum == null ? "—" : snfRateNum.toFixed(1) + "%"} sub={`${tot.rtas} of ${tot.admits} SNF admits · goal ${thNum(snfTh?.target) ?? "—"}%`} delta={data.mom?.snfRta?.delta} deltaUnit=" pts" higherBetter={false} />
-        <Kpi tone={toneName(ltcRateNum, ltcTh)} label="LTC RTA rate" value={ltcRateNum == null ? "—" : ltcRateNum.toFixed(1) + "%"} sub={`${tot.ltc_rtas} of ${tot.ltc_admits} LTC admits`} />
+        <Kpi tone={toneName(snfRateNum, snfTh)} label="SNF RTA rate" value={snfRateNum == null ? "—" : snfRateNum.toFixed(1) + "%"} sub={`${tot.rtas} of ${totDenom} facility admits · goal ${thNum(snfTh?.target) ?? "—"}%`} delta={data.mom?.snfRta?.delta} deltaUnit=" pts" higherBetter={false} />
+        <Kpi tone={toneName(ltcRateNum, ltcTh)} label="LTC RTA rate" value={ltcRateNum == null ? "—" : ltcRateNum.toFixed(1) + "%"} sub={`${tot.ltc_rtas} of ${totDenom} facility admits`} />
         <Kpi tone="muted" label="Total admissions" value={n0(tot.admits + tot.ltc_admits)} sub="SNF + LTC" delta={data.mom?.admits?.delta} higherBetter={true} />
         <Kpi tone="muted" label="ER visits" value={n0(tot.er)} sub="Across portfolio" delta={data.mom?.er?.delta} higherBetter={false} />
       </section>
@@ -1160,7 +1169,7 @@ async function loadMonthData(monthIso) {
     supabase.from("facilities").select("id, name, code, ccn, org_id, active"),
     supabase.from("facility_monthly").select("facility_id, avg_spectrum_census, avg_snf, avg_ltc").eq("month", start),
     supabase.from("facility_growth").select("facility_id, avg_building_census, avg_non_spectrum").eq("month", start),
-    supabase.from("rta_monthly").select("facility_id, admits, rtas, ltc_admits, ltc_rtas, er_visits").eq("month", start),
+    supabase.from("rta_monthly").select("facility_id, admits, rtas, ltc_admits, ltc_rtas, er_visits, facility_admits, nonshs_rtas").eq("month", start),
     supabase.from("daily_census").select("facility_id, census_date, spectrum_census").gte("census_date", start).lte("census_date", end),
     supabase.from("liaison_monthly").select("hours, ot_hours, notes_count, liaisons(name)").eq("month", start),
     supabase.from("facility_cms").select("*"),
@@ -1214,11 +1223,18 @@ async function loadMonthData(monthIso) {
     o.org_id = facById[o.facility_id]?.org_id ?? null;
     o.cms = cmsById[o.facility_id] || null;
     const rr = rtaById[o.facility_id];
-    o.rta = rr ? {
-      admits: rr.admits, rtas: rr.rtas, ltc_admits: rr.ltc_admits, ltc_rtas: rr.ltc_rtas, er: rr.er_visits,
-      snfRate: rr.admits ? (rr.rtas / rr.admits) * 100 : null,
-      ltcRate: rr.ltc_admits ? (rr.ltc_rtas / rr.ltc_admits) * 100 : null,
-    } : null;
+    o.rta = rr ? (() => {
+      const den = rtaDenom(rr);
+      const spectrum = (rr.rtas || 0) + (rr.ltc_rtas || 0);
+      return {
+        admits: rr.admits, rtas: rr.rtas, ltc_admits: rr.ltc_admits, ltc_rtas: rr.ltc_rtas, er: rr.er_visits,
+        facility_admits: den, nonshs_rtas: rr.nonshs_rtas,
+        snfRate: rtaPct(rr.rtas, den),
+        ltcRate: rtaPct(rr.ltc_rtas, den),
+        spectrumRate: rtaPct(spectrum, den),
+        totalRate: rtaPct(spectrum + (rr.nonshs_rtas || 0), den),
+      };
+    })() : null;
   });
   // trailing monthly census series (sparklines) + portfolio MoM
   const trailByFac = {}, monthTotals = {};
@@ -1264,21 +1280,28 @@ const prevKey = curIdx > 0 ? trailMonths[curIdx - 1] : null;
   const hasLiaison = liaisons.length > 0;
   const liaisonNotes = liaisons.reduce((s, l) => s + (l.notes || 0), 0);
   const liaisonHrs = liaisons.reduce((s, l) => s + (l.hours || 0), 0);
-  const rtaRows = (rta.data || []).map((r) => ({
-    name: facById[r.facility_id]?.name || `#${r.facility_id}`,
-    admits: r.admits, rtas: r.rtas, ltc_admits: r.ltc_admits, ltc_rtas: r.ltc_rtas, er: r.er_visits,
-    snfRate: r.admits ? (r.rtas / r.admits) * 100 : null,
-    ltcRate: r.ltc_admits ? (r.ltc_rtas / r.ltc_admits) * 100 : null,
- })).sort((a, b) => (b.snfRate ?? -1) - (a.snfRate ?? -1));
+  const rtaRows = (rta.data || []).map((r) => {
+    const den = rtaDenom(r);
+    const spectrum = (r.rtas || 0) + (r.ltc_rtas || 0);
+    return {
+      name: facById[r.facility_id]?.name || `#${r.facility_id}`,
+      admits: r.admits, rtas: r.rtas, ltc_admits: r.ltc_admits, ltc_rtas: r.ltc_rtas, er: r.er_visits,
+      facility_admits: den, nonshs_rtas: r.nonshs_rtas,
+      snfRate: rtaPct(r.rtas, den),
+      ltcRate: rtaPct(r.ltc_rtas, den),
+      spectrumRate: rtaPct(spectrum, den),
+      totalRate: rtaPct(spectrum + (r.nonshs_rtas || 0), den),
+    };
+  }).sort((a, b) => (b.snfRate ?? -1) - (a.snfRate ?? -1));
 
   // —— Month-over-month deltas, vs the previous month that has data (prevKey) ——
   const curRta = rtaRows.reduce((a, r) => ({
-    admits: a.admits + (r.admits || 0) + (r.ltc_admits || 0),
+    admits: a.admits + (rtaDenom(r) || 0),
     snfAdmits: a.snfAdmits + (r.admits || 0),
     snfRtas: a.snfRtas + (r.rtas || 0),
     er: a.er + (r.er || 0),
   }), { admits: 0, snfAdmits: 0, snfRtas: 0, er: 0 });
-  const curSnfRate = curRta.snfAdmits ? (curRta.snfRtas / curRta.snfAdmits) * 100 : null;
+  const curSnfRate = rtaPct(curRta.snfRtas, curRta.admits);
   const curOt = liaisons.reduce((s, l) => s + (l.ot || 0), 0);
   const round1 = (x) => Math.round(x * 10) / 10;
 
@@ -1286,7 +1309,7 @@ const prevKey = curIdx > 0 ? trailMonths[curIdx - 1] : null;
   if (prevKey) {
     const [pfg, prt, plm] = await Promise.all([
       supabase.from("facility_growth").select("avg_building_census").eq("month", prevKey),
-      supabase.from("rta_monthly").select("admits, rtas, ltc_admits, ltc_rtas, er_visits").eq("month", prevKey),
+      supabase.from("rta_monthly").select("admits, rtas, ltc_admits, ltc_rtas, er_visits, facility_admits").eq("month", prevKey),
       supabase.from("liaison_monthly").select("hours, ot_hours, notes_count").eq("month", prevKey),
     ]);
     // Capture: prev census (from trailing window) over prev building total.
@@ -1296,12 +1319,12 @@ const prevKey = curIdx > 0 ? trailMonths[curIdx - 1] : null;
     // RTA / admissions / ER — only if the prior month actually had RTA rows.
     if ((prt.data || []).length) {
       const p = prt.data.reduce((a, r) => ({
-        admits: a.admits + (r.admits || 0) + (r.ltc_admits || 0),
+        admits: a.admits + (rtaDenom(r) || 0),
         snfAdmits: a.snfAdmits + (r.admits || 0),
         snfRtas: a.snfRtas + (r.rtas || 0),
         er: a.er + (r.er_visits || 0),
       }), { admits: 0, snfAdmits: 0, snfRtas: 0, er: 0 });
-      const prevSnfRate = p.snfAdmits ? (p.snfRtas / p.snfAdmits) * 100 : null;
+      const prevSnfRate = rtaPct(p.snfRtas, p.admits);
       if (curSnfRate != null && prevSnfRate != null) mom.snfRta = { prev: prevSnfRate, delta: round1(curSnfRate - prevSnfRate) };
       mom.admits = { prev: p.admits, delta: curRta.admits - p.admits };
       mom.er = { prev: p.er, delta: curRta.er - p.er };
