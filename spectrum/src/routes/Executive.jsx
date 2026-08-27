@@ -12,6 +12,7 @@ import { AnalysisTab } from "./Analysis.jsx";
 import QapiScorecard from "./QapiScorecard.jsx";
 import QapiEntry from "./QapiEntry.jsx";
 import QapiReview from "./QapiReview.jsx";
+import RtaPanel from "./RtaPanel.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import { ScopeProvider, ScopeSelector, ScopeBanner, useScope, applyScope } from "../lib/scope.jsx";
 
@@ -1467,6 +1468,7 @@ function ExecutiveInner() {
             {tab === "RTA" && <RtaTab data={data} month={month} goToFacility={goToFacility} />}
             {tab === "Analysis" && <AnalysisTab />}
             {tab === "QAPI" && <><QapiReview /><QapiEntry /><QapiScorecard /><div style={{ marginTop: 24 }}><QapiTab /></div></>}
+            {tab === "RTA" && <><RtaPanel /><RtaTab data={data} month={month} goToFacility={goToFacility} /></>}
             {tab === "Team" && <TeamTab data={data} month={month} />}
           </ErrorBoundary>
         )}
