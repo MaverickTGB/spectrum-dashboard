@@ -47,7 +47,7 @@ export function ScopeProvider({ children }) {
     if (!isAdmin) { setOrgs([]); return; }
     let alive = true;
     supabase.from("organizations")
-      .select("id, display_name, slug, partner_login")
+      .select("id, display_name, slug, partner_login, exclude_from_rollup")
       .order("display_name")
       .then(({ data }) => { if (alive) setOrgs(data || []); });
     return () => { alive = false; };
