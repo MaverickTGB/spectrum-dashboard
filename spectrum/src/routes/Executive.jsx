@@ -1161,12 +1161,12 @@ function monthsAgoStart(ym, n) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
-async function loadMonthData(monthIso) {
+async function loadMonthData(monthIso, keepOrgId = null) {
   const ym = ymKey(monthIso);          // normalize 2026-06-01 -> 2026-06
   const start = `${ym}-01`;
   const end = lastDayOfMonth(ym);
   const trailStart = monthsAgoStart(ym, 5);   // 6-month window ending at `start`
-  const [facs, fm, fg, rta, dc, lm, cms, th, tr] = await Promise.all([
+  const [facs, fm, fg, rta, dc, lm, cms, th, tr, orgRows] = await Promise.all([
     supabase.from("facilities").select("id, name, code, ccn, org_id, active"),
     supabase.from("facility_monthly").select("facility_id, avg_spectrum_census, avg_snf, avg_ltc").eq("month", start),
     supabase.from("facility_growth").select("facility_id, avg_building_census, avg_non_spectrum").eq("month", start),
@@ -1176,9 +1176,22 @@ async function loadMonthData(monthIso) {
     supabase.from("facility_cms").select("*"),
     supabase.from("metric_thresholds").select("metric_key, label, unit, direction, target, amber, red, benchmark_national, benchmark_state, benchmark_state_code, benchmark_period, benchmark_source, provisional").eq("active", true),
     supabase.from("facility_monthly").select("facility_id, month, avg_spectrum_census").gte("month", trailStart).lte("month", start),
+    supabase.from("organizations").select("id, exclude_from_rollup"),
   ]);
-  const err = facs.error || fm.error || fg.error || rta.error || dc.error || lm.error || cms.error || th.error || tr.error;
+  const err = facs.error || fm.error || fg.error || rta.error || dc.error || lm.error || cms.error || th.error || tr.error || orgRows.error;
   if (err) throw err;
+// Sandbox orgs (organizations.exclude_from_rollup) are dropped from the
+// portfolio-wide load so they never touch "All facilities" aggregates.
+// They still load when the admin explicitly scopes to that org (keepOrgId).
+const excludedOrgIds = new Set((orgRows.data || [])
+  .filter((o) => o.exclude_from_rollup && o.id !== keepOrgId)
+  .map((o) => o.id));
+const excludedFacIds = new Set((facs.data || [])
+  .filter((f) => excludedOrgIds.has(f.org_id)).map((f) => f.id));
+const keepRows = (rows) => (rows || []).filter((r) => !excludedFacIds.has(r.facility_id));
+facs.data = (facs.data || []).filter((f) => !excludedOrgIds.has(f.org_id));
+fm.data = keepRows(fm.data); fg.data = keepRows(fg.data); rta.data = keepRows(rta.data);
+dc.data = keepRows(dc.data); tr.data = keepRows(tr.data);
   // QAPI weekly rollup (Spectrum-internal). Fetched separately and tolerantly so a
   // missing/empty QAPI table never breaks the Overview load. Filtered to the scoped
   // facility set inside OverviewTab, so client-scoped views stay accurate.
@@ -1309,10 +1322,12 @@ const prevKey = curIdx > 0 ? trailMonths[curIdx - 1] : null;
   const mom = { census: prevKey != null ? { prev: monthTotals[prevKey], delta: totalCensus - monthTotals[prevKey] } : null };
   if (prevKey) {
     const [pfg, prt, plm] = await Promise.all([
-      supabase.from("facility_growth").select("avg_building_census").eq("month", prevKey),
-      supabase.from("rta_monthly").select("admits, rtas, ltc_admits, ltc_rtas, er_visits, facility_admits").eq("month", prevKey),
+      supabase.from("facility_growth").select("facility_id, avg_building_census").eq("month", prevKey),
+      supabase.from("rta_monthly").select("facility_id, admits, rtas, ltc_admits, ltc_rtas, er_visits, facility_admits").eq("month", prevKey),
       supabase.from("liaison_monthly").select("hours, ot_hours, notes_count").eq("month", prevKey),
     ]);
+    pfg.data = keepRows(pfg.data);
+    prt.data = keepRows(prt.data);
     // Capture: prev census (from trailing window) over prev building total.
     const prevBuilding = (pfg.data || []).reduce((s, r) => s + (r.avg_building_census || 0), 0);
     const prevCapture = prevBuilding ? round1((monthTotals[prevKey] / prevBuilding) * 100) : null;
@@ -1364,7 +1379,13 @@ function ExecutiveInner() {
   const [err, setErr] = useState(null);
   const { profile, isAdmin } = useAuth();
   const isStaff = ["admin", "manager"].includes(profile?.role);
-  const { orgId, scoped } = useScope();
+  const { orgId, scoped, orgs } = useScope();
+// Only refetch when scoping into/out of a sandbox org — normal client
+// scoping stays instant and client-side.
+const keepOrgId = useMemo(
+  () => (orgs.find((o) => o.id === orgId)?.exclude_from_rollup ? orgId : null),
+  [orgs, orgId]
+);
   const data = useMemo(() => applyScope(rawData, orgId), [rawData, orgId]);
   const tabs = scoped
      ? ["Overview", "Heatmap", "Facilities", "RTA", "Analysis", "QAPI"]
@@ -1385,11 +1406,11 @@ function ExecutiveInner() {
   useEffect(() => {
     if (!month) return;
     setLoading(true); setErr(null);
-    loadMonthData(month)
+    loadMonthData(month, keepOrgId)
       .then((d) => { setData(d); if (!selectedName && d.facilities[0]) setSelectedName(d.facilities[0].name); })
       .catch((e) => setErr(e.message || "Failed to load data"))
       .finally(() => setLoading(false));
-  }, [month]);
+  }, [month, keepOrgId]);
 
   const goToFacility = (name) => { setSelectedName(name); setTab("Facilities"); };
 
