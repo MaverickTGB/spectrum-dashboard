@@ -1390,7 +1390,7 @@ const keepOrgId = useMemo(
   const data = useMemo(() => applyScope(rawData, orgId), [rawData, orgId]);
   const tabs = scoped
      ? ["Overview", "Heatmap", "Facilities", "RTA", "Analysis", "QAPI"]
-         : ["Overview", "Heatmap", "Facilities", "RTA", "Analysis", "QAPI", "Readmission Outcomes", "Team"];
+        : ["Overview", "Heatmap", "Facilities", "RTA", "Analysis", "QAPI", "Outcomes", "Team"];
   useEffect(() => { if (!tabs.includes(tab)) setTab("Overview"); }, [scoped]);
 
   useEffect(() => {
@@ -1487,9 +1487,8 @@ const keepOrgId = useMemo(
             {tab === "Overview" && <OverviewTab data={data} month={month} goToFacility={goToFacility} />}
             {tab === "Heatmap" && <HeatmapTab data={data} month={month} goToFacility={goToFacility} />}
             {tab === "Facilities" && <FacilitiesTab data={data} selectedName={selectedName} setSelectedName={setSelectedName} month={month} />}
-            {tab === "RTA" && <RtaTab data={data} month={month} goToFacility={goToFacility} />}
             {tab === "Analysis" && <AnalysisTab />}
-            {tab === "Readmission Outcomes" && <HospitalOutcomes />}
+            {tab === "Outcomes" && <HospitalOutcomes />}
             {tab === "QAPI" && <><QapiReview /><QapiEntry /><QapiScorecard /><div style={{ marginTop: 24 }}><QapiTab /></div></>}
             {tab === "RTA" && <><RtaPanel /><RtaTab data={data} month={month} goToFacility={goToFacility} /></>}
             {tab === "Team" && <TeamTab data={data} month={month} />}
