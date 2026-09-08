@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from "recharts";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../lib/supabase.js";
 
 /* ─────────────────────────── design tokens ─────────────────────────── */
 const T = {
