@@ -13,6 +13,7 @@ import QapiScorecard from "./QapiScorecard.jsx";
 import QapiEntry from "./QapiEntry.jsx";
 import QapiReview from "./QapiReview.jsx";
 import RtaPanel from "./RtaPanel.jsx";
+import HospitalOutcomes from "./HospitalOutcomes.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import { ScopeProvider, ScopeSelector, ScopeBanner, useScope, applyScope } from "../lib/scope.jsx";
 
@@ -1389,7 +1390,7 @@ const keepOrgId = useMemo(
   const data = useMemo(() => applyScope(rawData, orgId), [rawData, orgId]);
   const tabs = scoped
      ? ["Overview", "Heatmap", "Facilities", "RTA", "Analysis", "QAPI"]
-     : ["Overview", "Heatmap", "Facilities", "RTA", "Analysis", "QAPI", "Team"];
+         : ["Overview", "Heatmap", "Facilities", "RTA", "Analysis", "QAPI", "Readmission Outcomes", "Team"];
   useEffect(() => { if (!tabs.includes(tab)) setTab("Overview"); }, [scoped]);
 
   useEffect(() => {
@@ -1488,6 +1489,7 @@ const keepOrgId = useMemo(
             {tab === "Facilities" && <FacilitiesTab data={data} selectedName={selectedName} setSelectedName={setSelectedName} month={month} />}
             {tab === "RTA" && <RtaTab data={data} month={month} goToFacility={goToFacility} />}
             {tab === "Analysis" && <AnalysisTab />}
+            {tab === "Readmission Outcomes" && <HospitalOutcomes />}
             {tab === "QAPI" && <><QapiReview /><QapiEntry /><QapiScorecard /><div style={{ marginTop: 24 }}><QapiTab /></div></>}
             {tab === "RTA" && <><RtaPanel /><RtaTab data={data} month={month} goToFacility={goToFacility} /></>}
             {tab === "Team" && <TeamTab data={data} month={month} />}
