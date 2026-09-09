@@ -4,7 +4,8 @@ import { useAuth } from "../lib/auth.jsx";
 
 /* ————————————————————— Spectrum Board —————————————————————
    Internal task board (admins + managers). Tables: boards, board_groups,
-   board_items, board_activity. Owner picker via board_people() RPC.
+   board_items, board_activity, board_item_owners. People via board_people() RPC.
+Owners are many-to-many; board_items.owner_id is legacy and no longer read.
    No PHI: item names and notes must never contain resident identifiers. */
 
 /* ---------- brand (sampled from logo) ---------- */
@@ -216,23 +217,44 @@ function StatusPill({ value, onChange, wide }) {
   );
 }
 
-function OwnerPicker({ value, people, onChange, showName = true }) {
+function OwnersPicker({ value, people, onToggle, showNames = true, max = 3 }) {
   const [open, setOpen] = useState(false);
-  const p = people.find((x) => x.user_id === value);
+  const chosen = people.filter((x) => value.includes(x.user_id));
+  const extra = chosen.length - max;
+  const label = chosen.length === 0 ? "Unassigned"
+    : chosen.length === 1 ? firstName(chosen[0])
+    : `${firstName(chosen[0])} +${chosen.length - 1}`;
   return (
     <div style={{ position: "relative" }}>
       <button onClick={() => setOpen(!open)} style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 999, padding: "2px 8px 2px 0" }}>
-        <Avatar person={p} />
-        {showName && <span style={{ fontSize: 13, fontWeight: 600, color: p ? T.ink : T.ink3 }}>{p ? firstName(p) : "Unassigned"}</span>}
+        {chosen.length === 0 ? <Avatar /> : (
+          <span style={{ display: "flex", flexShrink: 0 }}>
+            {chosen.slice(0, max).map((p, i) => (
+              <span key={p.user_id} style={{ marginLeft: i ? -8 : 0, borderRadius: "50%", boxShadow: "0 0 0 2px #fff" }}><Avatar person={p} /></span>
+            ))}
+            {extra > 0 && (
+              <span style={{ marginLeft: -8, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: "50%", background: T.line, color: T.ink2, fontSize: 11, fontWeight: 700, boxShadow: "0 0 0 2px #fff" }}>+{extra}</span>
+            )}
+          </span>
+        )}
+        {showNames && <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", color: chosen.length ? T.ink : T.ink3 }}>{label}</span>}
       </button>
       <Popover open={open} onClose={() => setOpen(false)}>
-        {people.map((x) => (
-          <button key={x.user_id} onClick={() => { onChange(x.user_id); setOpen(false); }}>
-            <Avatar person={x} size={22} /> <span>{x.full_name || x.email}</span>
-            {x.user_id === value && <Ic d={I.check} size={14} style={{ marginLeft: "auto", color: T.ink3 }} />}
-          </button>
-        ))}
-        <button onClick={() => { onChange(null); setOpen(false); }} style={{ color: T.ink2 }}><Avatar size={22} /> Unassigned</button>
+        {people.map((x) => {
+          const on = value.includes(x.user_id);
+          return (
+            <button key={x.user_id} onClick={() => onToggle(x.user_id, !on)}>
+              <Avatar person={x} size={22} /> <span>{x.full_name || x.email}</span>
+              {on && <Ic d={I.check} size={14} style={{ marginLeft: "auto", color: T.ink3 }} />}
+            </button>
+          );
+        })}
+        {value.length > 0 && (
+          <>
+            <div style={{ borderTop: `1px solid ${T.line}`, margin: "4px 0" }} />
+            <button onClick={() => { value.forEach((u) => onToggle(u, false)); setOpen(false); }} style={{ color: T.ink2 }}><Avatar size={22} /> Clear all</button>
+          </>
+        )}
       </Popover>
     </div>
   );
@@ -317,7 +339,7 @@ async function loadAll() {
   if (e1) throw e1; if (e2) throw e2; if (e3) throw e3;
   const { data: companies } = await supabase.from("board_companies").select("*").eq("archived", false).order("position").order("name");
   const board = boards?.[0];
-  if (!board) return { board: null, groups: [], items: [], people: people || [], facilities: facilities || [], companies: companies || [], activity: [] };
+  if (!board) return { board: null, groups: [], items: [], people: people || [], facilities: facilities || [], companies: companies || [], activity: [], owners: [] };
   const [{ data: groups, error: e4 }, { data: items, error: e5 }] = await Promise.all([
     supabase.from("board_groups").select("*").eq("board_id", board.id).order("position").order("id"),
     supabase.from("board_items").select("*").eq("board_id", board.id).order("position").order("id"),
@@ -325,18 +347,23 @@ async function loadAll() {
   if (e4) throw e4; if (e5) throw e5;
   const ids = (items || []).map((i) => i.id);
   let activity = [];
+  let owners = [];
   if (ids.length) {
-    const { data } = await supabase.from("board_activity").select("*").in("item_id", ids).order("created_at", { ascending: false }).limit(60);
-    activity = data || [];
+    const [{ data: act }, { data: own }] = await Promise.all([
+      supabase.from("board_activity").select("*").in("item_id", ids).order("created_at", { ascending: false }).limit(60),
+      supabase.from("board_item_owners").select("item_id, user_id").in("item_id", ids),
+    ]);
+    activity = act || [];
+    owners = own || [];
   }
-  return { board, groups: groups || [], items: items || [], people: people || [], facilities: facilities || [], companies: companies || [], activity };
+  return { board, groups: groups || [], items: items || [], people: people || [], facilities: facilities || [], companies: companies || [], activity, owners };
 }
 
 /* ---------- main ---------- */
 export default function Board() {
   const { profile } = useAuth();
   const me = profile?.user_id;
-  const [state, setState] = useState({ board: null, groups: [], items: [], people: [], facilities: [], companies: [], activity: [] });
+  const [state, setState] = useState({ board: null, groups: [], items: [], people: [], facilities: [], companies: [], activity: [], owners: [] });
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [view, setView] = useState("table");
@@ -353,7 +380,7 @@ export default function Board() {
   const [banner, setBanner] = useState(null); // { text, color }
   const lastPointer = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   const { fire, canvas } = useConfetti();
-  const { board, groups, items, people, facilities, companies, activity } = state;
+  const { board, groups, items, people, facilities, companies, activity, owners } = state;
   useEffect(() => {
     const h = (e) => { const p = e.touches ? e.touches[0] : e; if (p) lastPointer.current = { x: p.clientX, y: p.clientY }; };
     window.addEventListener("pointerdown", h, true); window.addEventListener("dragend", h, true);
@@ -422,16 +449,26 @@ export default function Board() {
   const addItem = async (group_id, name = "New item") => {
     const position = items.filter((i) => i.group_id === group_id).length;
     const { data, error } = await supabase.from("board_items")
-      .insert({ board_id: board.id, group_id, name, owner_id: me, status: "Not started", priority: "Medium", position })
+      .insert({ board_id: board.id, group_id, name, status: "Not started", priority: "Medium", position })
       .select().single();
     if (error) return fail(error);
     setItems((xs) => [...xs, data]); setToast("Added"); pulse(data.id, "sb-new", 500);
+    if (me) {
+      const row = { item_id: data.id, user_id: me };
+      const { error: eo } = await supabase.from("board_item_owners").insert(row);
+      if (!eo) setState((s) => ({ ...s, owners: [...s.owners, row] }));
+    }
   };
   const duplicate = async (it) => {
     const { id, created_at, updated_at, completed_at, created_by, ...rest } = it;
     const { data, error } = await supabase.from("board_items").insert({ ...rest, name: it.name + " (copy)", status: "Not started" }).select().single();
     if (error) return fail(error);
     setItems((xs) => [...xs, data]); setToast("Duplicated");
+    const carry = ownerIds(it.id).map((u) => ({ item_id: data.id, user_id: u }));
+    if (carry.length) {
+      const { error: eo } = await supabase.from("board_item_owners").insert(carry);
+      if (!eo) setState((s) => ({ ...s, owners: [...s.owners, ...carry] }));
+    }
   };
   const remove = async (it) => {
     if (!window.confirm(`Delete "${it.name}"?`)) return;
@@ -463,6 +500,18 @@ export default function Board() {
     setState((s) => ({ ...s, companies: [...s.companies, data] }));
     return data;
   };
+  const ownerIds = (itemId) => owners.filter((o) => o.item_id === itemId).map((o) => o.user_id);
+  const toggleOwner = async (itemId, userId, on) => {
+    setState((s) => ({
+      ...s,
+      owners: on ? [...s.owners, { item_id: itemId, user_id: userId }]
+                 : s.owners.filter((o) => !(o.item_id === itemId && o.user_id === userId)),
+    }));
+    const { error } = on
+      ? await supabase.from("board_item_owners").insert({ item_id: itemId, user_id: userId })
+      : await supabase.from("board_item_owners").delete().eq("item_id", itemId).eq("user_id", userId);
+    if (error) fail(error); else refreshActivity();
+  };
   const markInboxSeen = async () => {
     if (!me) return;
     const seen_at = new Date().toISOString();
@@ -475,21 +524,22 @@ export default function Board() {
   const personOf = (id) => people.find((p) => p.user_id === id);
   const facilityOf = (id) => facilities.find((f) => f.id === id);
   const companyOf = (id) => companies.find((c) => c.id === id);
+  const ownerNames = (itemId) => ownerIds(itemId).map((u) => personOf(u)?.full_name || personOf(u)?.email || "").join(" ");
   const groupOf = (it) => groups.find((g) => g.id === it.group_id) || { name: "", color: T.ink3 };
   const visible = useMemo(() => {
     const q = query.toLowerCase();
-    let xs = q ? items.filter((i) => [i.name, facilityOf(i.facility_id)?.name, companyOf(i.company_id)?.name, personOf(i.owner_id)?.full_name, i.status, i.notes].join(" ").toLowerCase().includes(q)) : items;
+    let xs = q ? items.filter((i) => [i.name, facilityOf(i.facility_id)?.name, companyOf(i.company_id)?.name, ownerNames(i.id), i.status, i.notes].join(" ").toLowerCase().includes(q)) : items;
     if (sort) {
-      const val = (i) => sort.key === "owner" ? (personOf(i.owner_id)?.full_name || "") : sort.key === "facility" ? (facilityOf(i.facility_id)?.name || "") : sort.key === "company" ? (companyOf(i.company_id)?.name || "") : sort.key === "due" ? (i.due_date || "9") : String(i[sort.key] ?? "");
+      const val = (i) => sort.key === "owner" ? ownerNames(i.id) : sort.key === "facility" ? (facilityOf(i.facility_id)?.name || "") : sort.key === "company" ? (companyOf(i.company_id)?.name || "") : sort.key === "due" ? (i.due_date || "9") : String(i[sort.key] ?? "");
       xs = [...xs].sort((a, b) => val(a).localeCompare(val(b)) * sort.dir);
     }
     return xs;
-  }, [items, query, sort, people, facilities]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [items, query, sort, people, facilities, owners]); // eslint-disable-line react-hooks/exhaustive-deps
   const progress = (gid) => { const g = items.filter((i) => i.group_id === gid); return g.length ? Math.round((g.filter((i) => i.status === "Done").length / g.length) * 100) : 0; };
   const sel = items.find((i) => i.id === selected);
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
   const doneWeek = items.filter((i) => i.status === "Done" && i.completed_at && i.completed_at > weekAgo).length;
-  const myWork = items.filter((i) => i.owner_id === me && i.status !== "Done").sort((a, b) => (a.due_date || "9").localeCompare(b.due_date || "9"));
+  const myWork = items.filter((i) => ownerIds(i.id).includes(me) && i.status !== "Done").sort((a, b) => (a.due_date || "9").localeCompare(b.due_date || "9"));
   const inboxRows = activity.filter((a) => a.actor_id !== me || a.kind === "comment");
   const unread = inboxRows.filter((a) => !seenAt || a.created_at > seenAt).length;
   const describe = (a) => {
@@ -498,6 +548,8 @@ export default function Board() {
     const text = {
       created: "added this item", status: `moved it to ${a.new_value}`,
       owner: a.new_value ? `assigned it to ${firstName(personOf(a.new_value)) || "someone"}` : "unassigned it",
+      owner_added: `added ${firstName(personOf(a.new_value)) || "someone"} as an owner`,
+      owner_removed: `removed ${firstName(personOf(a.old_value)) || "someone"} as an owner`,
       due: a.new_value ? `set the due date to ${fmtDate(a.new_value)}` : "cleared the due date",
       moved: `moved it to ${groups.find((g) => String(g.id) === a.new_value)?.name || "another group"}`,
       renamed: `renamed it from “${a.old_value}”`, comment: a.body,
@@ -569,7 +621,7 @@ export default function Board() {
   };
 
   /* ----- table view ----- */
-  const COLS = [["name", "Item", "minmax(260px,1.8fr)"], ["owner", "Owner", "150px"], ["status", "Status", "160px"], ["due", "Due", "120px"], ["company", "Company", "140px"], ["facility", "Facility", "170px"], ["priority", "Priority", "110px"]];
+  const COLS = [["name", "Item", "minmax(260px,1.8fr)"], ["owner", "Owners", "180px"], ["status", "Status", "160px"], ["due", "Due", "120px"], ["company", "Company", "140px"], ["facility", "Facility", "170px"], ["priority", "Priority", "110px"]];
   const gridCols = "40px " + COLS.map((c) => c[2]).join(" ") + " 110px";
 
   const TableView = (
@@ -598,7 +650,7 @@ export default function Board() {
                     <EditableText value={it.name} onChange={(v) => update(it.id, { name: v })} />
                     {it.notes && <span title="Has notes" style={{ width: 6, height: 6, borderRadius: "50%", background: T.ink3, flexShrink: 0 }} />}
                   </div>
-                  <div style={{ padding: "0 8px" }}><OwnerPicker value={it.owner_id} people={people} onChange={(v) => update(it.id, { owner_id: v })} /></div>
+                  <div style={{ padding: "0 8px" }}><OwnersPicker value={ownerIds(it.id)} people={people} onToggle={(u, on) => toggleOwner(it.id, u, on)} max={2} /></div>
                   <div style={{ padding: "0 8px" }}><StatusPill value={it.status} onChange={(v) => update(it.id, { status: v })} /></div>
                   <div style={{ padding: "0 8px" }}>
                     <input type="date" className="sb-cell-input" value={it.due_date || ""} onChange={(e) => update(it.id, { due_date: e.target.value || null })}
@@ -656,7 +708,12 @@ export default function Board() {
                     <span>{facilityOf(it.facility_id)?.name || g.name}</span>
                   </p>
                   <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: T.ink2 }}>
-                    <Avatar person={personOf(it.owner_id)} size={22} />
+                    <span style={{ display: "flex", flexShrink: 0 }}>
+                      {ownerIds(it.id).length === 0 && <Avatar size={22} />}
+                      {ownerIds(it.id).slice(0, 3).map((u, i) => (
+                        <span key={u} style={{ marginLeft: i ? -7 : 0, borderRadius: "50%", boxShadow: "0 0 0 2px #fff" }}><Avatar person={personOf(u)} size={22} /></span>
+                      ))}
+                    </span>
                     {it.due_date && <span style={{ display: "flex", alignItems: "center", gap: 4, ...(isOverdue(it.due_date, it.status) ? { color: BRAND.crimson, fontWeight: 600 } : {}) }}><Ic d={I.cal} size={12} /> {fmtDate(it.due_date)}</span>}
                     <span style={{ marginLeft: "auto", borderRadius: 999, padding: "2px 8px", fontSize: 11, fontWeight: 600, background: PRIORITY[it.priority]?.bg, color: PRIORITY[it.priority]?.fg }}>{it.priority}</span>
                   </div>
@@ -679,7 +736,12 @@ export default function Board() {
           <span style={{ marginTop: 4, width: 10, height: 10, flexShrink: 0, borderRadius: "50%", background: STATUS[it.status]?.dot }} />
         </div>
         <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: T.ink2 }}>
-          <Avatar person={personOf(it.owner_id)} size={20} />
+          <span style={{ display: "flex", flexShrink: 0 }}>
+            {ownerIds(it.id).length === 0 && <Avatar size={20} />}
+            {ownerIds(it.id).slice(0, 3).map((u, i) => (
+              <span key={u} style={{ marginLeft: i ? -6 : 0, borderRadius: "50%", boxShadow: "0 0 0 2px #fff" }}><Avatar person={personOf(u)} size={20} /></span>
+            ))}
+          </span>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub || [companyOf(it.company_id)?.name, facilityOf(it.facility_id)?.name].filter(Boolean).join(" · ") || groupOf(it).name}</span>
           {it.due_date && <span style={{ marginLeft: "auto", flexShrink: 0, ...(isOverdue(it.due_date, it.status) ? { color: BRAND.crimson, fontWeight: 600 } : {}) }}>{fmtDate(it.due_date)}</span>}
         </div>
@@ -762,7 +824,7 @@ export default function Board() {
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
           {[
             ["Status", <StatusPill value={sel.status} onChange={(v) => update(sel.id, { status: v })} />],
-            ["Owner", <OwnerPicker value={sel.owner_id} people={people} onChange={(v) => update(sel.id, { owner_id: v })} />],
+            ["Owners", <OwnersPicker value={ownerIds(sel.id)} people={people} onToggle={(u, on) => toggleOwner(sel.id, u, on)} />],
             ["Due", <input type="date" value={sel.due_date || ""} onChange={(e) => update(sel.id, { due_date: e.target.value || null })} style={{ border: 0, borderRadius: 6, padding: "4px 8px", fontSize: 13, background: T.mist }} />],
             ["Company", <CompanyPicker value={sel.company_id} companies={companies} onChange={(v) => update(sel.id, { company_id: v })} onCreate={createCompany} />],
             ["Facility", <select value={sel.facility_id || ""} onChange={(e) => update(sel.id, { facility_id: e.target.value ? Number(e.target.value) : null })} style={{ border: 0, borderRadius: 6, padding: "4px 8px", fontSize: 13, background: T.mist, maxWidth: "100%" }}>
@@ -883,7 +945,7 @@ function Comments({ itemId, activity, me, personOf, onPosted }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {rows.map((a) => {
           const p = personOf(a.actor_id);
-          const label = { created: "created this", status: `→ ${a.new_value}`, owner: "changed owner", due: a.new_value ? `due ${fmtDate(a.new_value)}` : "cleared due date", moved: "moved to another group", renamed: `renamed from “${a.old_value}”`, comment: a.body }[a.kind] || a.kind;
+          const label = { created: "created this", status: `→ ${a.new_value}`, owner: "changed owner", owner_added: `+ ${firstName(personOf(a.new_value)) || "someone"}`, owner_removed: `− ${firstName(personOf(a.old_value)) || "someone"}`, due: a.new_value ? `due ${fmtDate(a.new_value)}` : "cleared due date", moved: "moved to another group", renamed: `renamed from “${a.old_value}”`, comment: a.body }[a.kind] || a.kind;
           return (
             <div key={a.id} style={{ display: "flex", gap: 8, fontSize: 12.5 }}>
               <Avatar person={p} size={20} />
