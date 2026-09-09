@@ -251,6 +251,41 @@ function PriorityPicker({ value, onChange }) {
   );
 }
 
+function CompanyPicker({ value, companies, onChange, onCreate }) {
+  const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const c = companies.find((x) => x.id === value);
+  const submit = async () => { const n = name.trim(); if (!n) return; await onCreate(n); setName(""); setAdding(false); setOpen(false); };
+  return (
+    <div style={{ position: "relative" }}>
+      <button className="sb-pill" onClick={() => setOpen(!open)} style={c ? { background: c.color + "1F", color: c.color, fontWeight: 600 } : { background: "transparent", color: T.ink3, fontWeight: 400 }}>
+        {c && <span style={{ width: 8, height: 8, borderRadius: "50%", background: c.color }} />}{c ? c.name : "Company"}
+      </button>
+      <Popover open={open} onClose={() => { setOpen(false); setAdding(false); }}>
+        {companies.map((x) => (
+          <button key={x.id} onClick={() => { onChange(x.id); setOpen(false); }}>
+            <span style={{ width: 10, height: 10, borderRadius: "50%", background: x.color }} /><span>{x.name}</span>
+            {x.id === value && <Ic d={I.check} size={14} style={{ marginLeft: "auto", color: T.ink3 }} />}
+          </button>
+        ))}
+        {value && <button onClick={() => { onChange(null); setOpen(false); }} style={{ color: T.ink2 }}><span style={{ width: 10 }} />None</button>}
+        <div style={{ borderTop: `1px solid ${T.line}`, margin: "4px 0" }} />
+        {adding ? (
+          <div style={{ display: "flex", gap: 6, padding: "4px 6px" }}>
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Company name"
+              onKeyDown={(e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") setAdding(false); }}
+              style={{ flex: 1, border: 0, borderRadius: 6, padding: "6px 8px", fontSize: 13, background: T.mist, outline: "none" }} />
+            <button onClick={submit} style={{ borderRadius: 6, padding: "0 10px", fontSize: 13, fontWeight: 600, color: "#fff", background: T.accent, width: "auto" }}>Add</button>
+          </div>
+        ) : (
+          <button onClick={() => setAdding(true)} style={{ color: T.accent, fontWeight: 600 }}><Ic d={I.plus} size={14} /> Add company…</button>
+        )}
+      </Popover>
+    </div>
+  );
+}
+
 function EditableText({ value, onChange, style }) {
   const [editing, setEditing] = useState(false);
   const [v, setV] = useState(value);
@@ -280,8 +315,9 @@ async function loadAll() {
     supabase.from("facilities").select("id, name, code").order("name"),
   ]);
   if (e1) throw e1; if (e2) throw e2; if (e3) throw e3;
+  const { data: companies } = await supabase.from("board_companies").select("*").eq("archived", false).order("position").order("name");
   const board = boards?.[0];
-  if (!board) return { board: null, groups: [], items: [], people: people || [], facilities: facilities || [], activity: [] };
+  if (!board) return { board: null, groups: [], items: [], people: people || [], facilities: facilities || [], companies: companies || [], activity: [] };
   const [{ data: groups, error: e4 }, { data: items, error: e5 }] = await Promise.all([
     supabase.from("board_groups").select("*").eq("board_id", board.id).order("position").order("id"),
     supabase.from("board_items").select("*").eq("board_id", board.id).order("position").order("id"),
@@ -293,14 +329,14 @@ async function loadAll() {
     const { data } = await supabase.from("board_activity").select("*").in("item_id", ids).order("created_at", { ascending: false }).limit(60);
     activity = data || [];
   }
-  return { board, groups: groups || [], items: items || [], people: people || [], facilities: facilities || [], activity };
+  return { board, groups: groups || [], items: items || [], people: people || [], facilities: facilities || [], companies: companies || [], activity };
 }
 
 /* ---------- main ---------- */
 export default function Board() {
   const { profile } = useAuth();
   const me = profile?.user_id;
-  const [state, setState] = useState({ board: null, groups: [], items: [], people: [], facilities: [], activity: [] });
+  const [state, setState] = useState({ board: null, groups: [], items: [], people: [], facilities: [], companies: [], activity: [] });
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [view, setView] = useState("table");
@@ -317,7 +353,7 @@ export default function Board() {
   const [banner, setBanner] = useState(null); // { text, color }
   const lastPointer = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   const { fire, canvas } = useConfetti();
-  const { board, groups, items, people, facilities, activity } = state;
+  const { board, groups, items, people, facilities, companies, activity } = state;
   useEffect(() => {
     const h = (e) => { const p = e.touches ? e.touches[0] : e; if (p) lastPointer.current = { x: p.clientX, y: p.clientY }; };
     window.addEventListener("pointerdown", h, true); window.addEventListener("dragend", h, true);
@@ -420,6 +456,13 @@ export default function Board() {
     if (error) return fail(error);
     setGroups((gs) => [...gs, data]);
   };
+  const createCompany = async (name) => {
+    const color = RING[companies.length % RING.length];
+    const { data, error } = await supabase.from("board_companies").insert({ name, color, position: companies.length }).select().single();
+    if (error) return fail(error);
+    setState((s) => ({ ...s, companies: [...s.companies, data] }));
+    return data;
+  };
   const markInboxSeen = async () => {
     if (!me) return;
     const seen_at = new Date().toISOString();
@@ -431,12 +474,13 @@ export default function Board() {
   /* ----- derived ----- */
   const personOf = (id) => people.find((p) => p.user_id === id);
   const facilityOf = (id) => facilities.find((f) => f.id === id);
+  const companyOf = (id) => companies.find((c) => c.id === id);
   const groupOf = (it) => groups.find((g) => g.id === it.group_id) || { name: "", color: T.ink3 };
   const visible = useMemo(() => {
     const q = query.toLowerCase();
-    let xs = q ? items.filter((i) => [i.name, facilityOf(i.facility_id)?.name, personOf(i.owner_id)?.full_name, i.status, i.notes].join(" ").toLowerCase().includes(q)) : items;
+    let xs = q ? items.filter((i) => [i.name, facilityOf(i.facility_id)?.name, companyOf(i.company_id)?.name, personOf(i.owner_id)?.full_name, i.status, i.notes].join(" ").toLowerCase().includes(q)) : items;
     if (sort) {
-      const val = (i) => sort.key === "owner" ? (personOf(i.owner_id)?.full_name || "") : sort.key === "facility" ? (facilityOf(i.facility_id)?.name || "") : sort.key === "due" ? (i.due_date || "9") : String(i[sort.key] ?? "");
+      const val = (i) => sort.key === "owner" ? (personOf(i.owner_id)?.full_name || "") : sort.key === "facility" ? (facilityOf(i.facility_id)?.name || "") : sort.key === "company" ? (companyOf(i.company_id)?.name || "") : sort.key === "due" ? (i.due_date || "9") : String(i[sort.key] ?? "");
       xs = [...xs].sort((a, b) => val(a).localeCompare(val(b)) * sort.dir);
     }
     return xs;
@@ -525,7 +569,7 @@ export default function Board() {
   };
 
   /* ----- table view ----- */
-  const COLS = [["name", "Item", "minmax(260px,1.8fr)"], ["owner", "Owner", "150px"], ["status", "Status", "160px"], ["due", "Due", "120px"], ["facility", "Facility", "170px"], ["priority", "Priority", "110px"]];
+  const COLS = [["name", "Item", "minmax(260px,1.8fr)"], ["owner", "Owner", "150px"], ["status", "Status", "160px"], ["due", "Due", "120px"], ["company", "Company", "140px"], ["facility", "Facility", "170px"], ["priority", "Priority", "110px"]];
   const gridCols = "40px " + COLS.map((c) => c[2]).join(" ") + " 110px";
 
   const TableView = (
@@ -560,6 +604,7 @@ export default function Board() {
                     <input type="date" className="sb-cell-input" value={it.due_date || ""} onChange={(e) => update(it.id, { due_date: e.target.value || null })}
                       style={{ fontSize: 13, color: isOverdue(it.due_date, it.status) ? BRAND.crimson : T.ink, fontWeight: isOverdue(it.due_date, it.status) ? 600 : 400 }} />
                   </div>
+                  <div style={{ padding: "0 8px" }}><CompanyPicker value={it.company_id} companies={companies} onChange={(v) => update(it.id, { company_id: v })} onCreate={createCompany} /></div>
                   <div style={{ padding: "0 8px" }}>
                     <select className="sb-cell-input" value={it.facility_id || ""} onChange={(e) => update(it.id, { facility_id: e.target.value ? Number(e.target.value) : null })} style={{ fontSize: 13 }}>
                       <option value="">—</option>
@@ -606,7 +651,10 @@ export default function Board() {
               return (
                 <div key={it.id} className={`sb-card ${flash[it.id] || ""}`} draggable onDragStart={() => setDrag(it.id)} onClick={() => setSelected(it.id)} style={{ borderLeft: `4px solid ${g.color}` }}>
                   <p style={{ margin: 0, fontSize: 13, fontWeight: 500, lineHeight: 1.35 }}>{it.name}</p>
-                  <p style={{ margin: "4px 0 0", fontSize: 12, color: T.ink3 }}>{g.name}</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 12, color: T.ink3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    {companyOf(it.company_id) && <span style={{ borderRadius: 999, padding: "1px 8px", fontSize: 11, fontWeight: 600, background: companyOf(it.company_id).color + "1F", color: companyOf(it.company_id).color }}>{companyOf(it.company_id).name}</span>}
+                    <span>{facilityOf(it.facility_id)?.name || g.name}</span>
+                  </p>
                   <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: T.ink2 }}>
                     <Avatar person={personOf(it.owner_id)} size={22} />
                     {it.due_date && <span style={{ display: "flex", alignItems: "center", gap: 4, ...(isOverdue(it.due_date, it.status) ? { color: BRAND.crimson, fontWeight: 600 } : {}) }}><Ic d={I.cal} size={12} /> {fmtDate(it.due_date)}</span>}
@@ -632,7 +680,7 @@ export default function Board() {
         </div>
         <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: T.ink2 }}>
           <Avatar person={personOf(it.owner_id)} size={20} />
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub || facilityOf(it.facility_id)?.name || groupOf(it).name}</span>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub || [companyOf(it.company_id)?.name, facilityOf(it.facility_id)?.name].filter(Boolean).join(" · ") || groupOf(it).name}</span>
           {it.due_date && <span style={{ marginLeft: "auto", flexShrink: 0, ...(isOverdue(it.due_date, it.status) ? { color: BRAND.crimson, fontWeight: 600 } : {}) }}>{fmtDate(it.due_date)}</span>}
         </div>
       </div>
@@ -716,6 +764,7 @@ export default function Board() {
             ["Status", <StatusPill value={sel.status} onChange={(v) => update(sel.id, { status: v })} />],
             ["Owner", <OwnerPicker value={sel.owner_id} people={people} onChange={(v) => update(sel.id, { owner_id: v })} />],
             ["Due", <input type="date" value={sel.due_date || ""} onChange={(e) => update(sel.id, { due_date: e.target.value || null })} style={{ border: 0, borderRadius: 6, padding: "4px 8px", fontSize: 13, background: T.mist }} />],
+            ["Company", <CompanyPicker value={sel.company_id} companies={companies} onChange={(v) => update(sel.id, { company_id: v })} onCreate={createCompany} />],
             ["Facility", <select value={sel.facility_id || ""} onChange={(e) => update(sel.id, { facility_id: e.target.value ? Number(e.target.value) : null })} style={{ border: 0, borderRadius: 6, padding: "4px 8px", fontSize: 13, background: T.mist, maxWidth: "100%" }}>
               <option value="">—</option>{facilities.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select>],
             ["Priority", <PriorityPicker value={sel.priority} onChange={(v) => update(sel.id, { priority: v })} />],
