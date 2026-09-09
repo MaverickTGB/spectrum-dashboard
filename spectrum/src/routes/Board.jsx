@@ -63,6 +63,23 @@ const css = `
   .sb-link:hover { color: #fff; }
   .sb-fade { animation: sbfade 160ms ease-out; }
   @keyframes sbfade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .sb-new { animation: sbnew 420ms cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes sbnew { 0% { opacity: 0; transform: translateX(-12px); background: ${T.accentSoft}; } 60% { background: ${T.accentSoft}; } 100% { opacity: 1; transform: none; } }
+  .sb-pop { animation: sbpop 480ms cubic-bezier(.2,.9,.3,1.3); }
+  @keyframes sbpop { 0% { transform: scale(.94) translateY(6px); box-shadow: 0 0 0 0 rgba(27,42,71,.0); } 40% { transform: scale(1.04) translateY(-3px); box-shadow: 0 14px 28px rgba(27,42,71,.18); } 100% { transform: none; box-shadow: 0 1px 3px rgba(15,23,42,.08); } }
+  .sb-done { animation: sbdone 600ms ease-out; }
+  @keyframes sbdone { 0% { background: #DEEFDD; } 100% { background: transparent; } }
+  .sb-col.over { background: #E9EEF1; box-shadow: inset 0 0 0 2px var(--col); }
+  .sb-bar { transition: width 600ms cubic-bezier(.2,.8,.2,1); }
+  .sb-bar.full { background: linear-gradient(90deg, ${RING.join(",")}) !important; background-size: 200% 100% !important; animation: sbshimmer 1.6s ease-in-out 1; }
+  @keyframes sbshimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+  .sb-tick { display: inline-block; animation: sbtick 500ms cubic-bezier(.2,.9,.3,1.4); }
+  @keyframes sbtick { 0% { transform: translateY(8px) scale(.8); opacity: 0; } 100% { transform: none; opacity: 1; } }
+  .sb-check { animation: sbcheck 500ms cubic-bezier(.2,.9,.3,1.5); }
+  @keyframes sbcheck { 0% { transform: scale(0) rotate(-30deg); } 100% { transform: none; } }
+  .sb-banner { animation: sbbanner 3.2s ease-in-out forwards; }
+  @keyframes sbbanner { 0% { opacity: 0; transform: translate(-50%, 16px) scale(.96); } 12% { opacity: 1; transform: translate(-50%, 0) scale(1); } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -8px); } }
+  @media (prefers-reduced-motion: reduce) { .sb *, .sb *::before, .sb *::after { animation: none !important; transition: none !important; } }
 `;
 
 /* ---------- tiny icon set (inline SVG, 1.8 stroke) ---------- */
@@ -108,6 +125,52 @@ const timeAgo = (iso) => {
   if (s < 60) return "just now"; if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`; return `${Math.floor(s / 86400)}d ago`;
 };
+
+/* ---------- celebration ---------- */
+const DONE_LINES = ["Done. Nicely handled.", "One less thing.", "That's the way.", "Cleared.", "Off the list.", "Good work."];
+const reducedMotion = () => window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* Canvas confetti in the six brand colours. fire(x, y, power) — power 1 = item, 3 = group complete. */
+function useConfetti() {
+  const ref = useRef(null);
+  const parts = useRef([]);
+  const raf = useRef(0);
+  const tick = useCallback(() => {
+    const c = ref.current; if (!c) return;
+    const ctx = c.getContext("2d");
+    c.width = window.innerWidth; c.height = window.innerHeight;
+    ctx.clearRect(0, 0, c.width, c.height);
+    const now = performance.now();
+    parts.current = parts.current.filter((p) => now - p.t0 < p.life);
+    for (const p of parts.current) {
+      const age = (now - p.t0) / 1000;
+      p.vy += 900 * (1 / 60); p.x += p.vx / 60; p.y += p.vy / 60; p.rot += p.vr / 60;
+      const fade = 1 - Math.max(0, (now - p.t0 - p.life * 0.6) / (p.life * 0.4));
+      ctx.save(); ctx.globalAlpha = fade; ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      if (p.shape === 0) ctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2);
+      else { ctx.beginPath(); ctx.arc(0, 0, p.s / 2.6, 0, Math.PI * 2); ctx.fill(); }
+      ctx.restore();
+      void age;
+    }
+    if (parts.current.length) raf.current = requestAnimationFrame(tick);
+    else ctx.clearRect(0, 0, c.width, c.height);
+  }, []);
+  const fire = useCallback((x, y, power = 1) => {
+    if (reducedMotion()) return;
+    const n = Math.round(28 * power);
+    const now = performance.now();
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * (power > 2 ? Math.PI * 1.4 : Math.PI * 0.9);
+      const v = 260 + Math.random() * 380 * Math.min(power, 2);
+      parts.current.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vr: (Math.random() - 0.5) * 14, rot: Math.random() * Math.PI,
+        s: 6 + Math.random() * 6, color: RING[i % RING.length], shape: i % 3 === 0 ? 1 : 0, t0: now, life: 1400 + Math.random() * 800 });
+    }
+    cancelAnimationFrame(raf.current); raf.current = requestAnimationFrame(tick);
+  }, [tick]);
+  const canvas = <canvas ref={ref} style={{ position: "fixed", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 60 }} />;
+  return { fire, canvas };
+}
 
 /* ---------- atoms ---------- */
 function Avatar({ person, size = 26 }) {
@@ -248,8 +311,19 @@ export default function Board() {
   const [toast, setToast] = useState("");
   const [drag, setDrag] = useState(null);
   const [sort, setSort] = useState(null);
+  const [over, setOver] = useState(null);
   const [seenAt, setSeenAt] = useState(null);
+  const [flash, setFlash] = useState({}); // id -> css class for one-shot animations
+  const [banner, setBanner] = useState(null); // { text, color }
+  const lastPointer = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  const { fire, canvas } = useConfetti();
   const { board, groups, items, people, facilities, activity } = state;
+  useEffect(() => {
+    const h = (e) => { const p = e.touches ? e.touches[0] : e; if (p) lastPointer.current = { x: p.clientX, y: p.clientY }; };
+    window.addEventListener("pointerdown", h, true); window.addEventListener("dragend", h, true);
+    return () => { window.removeEventListener("pointerdown", h, true); window.removeEventListener("dragend", h, true); };
+  }, []);
+  const pulse = (id, cls, ms = 700) => { setFlash((f) => ({ ...f, [id]: cls })); setTimeout(() => setFlash((f) => { const n = { ...f }; delete n[id]; return n; }), ms); };
 
   const refresh = useCallback(async () => {
     try { setState(await loadAll()); setErr(""); }
@@ -273,7 +347,33 @@ export default function Board() {
   const setGroups = (fn) => setState((s) => ({ ...s, groups: fn(s.groups) }));
   const fail = (e) => { setErr(e.message || String(e)); refresh(); };
 
+  const ORDER = Object.keys(STATUS);
   const update = async (id, patch) => {
+    const before = items.find((x) => x.id === id);
+    if (before && patch.status && patch.status !== before.status) {
+      const fwd = ORDER.indexOf(patch.status) > ORDER.indexOf(before.status);
+      const { x, y } = lastPointer.current;
+      if (patch.status === "Done") {
+        const g = groups.find((gg) => gg.id === before.group_id);
+        const siblings = items.filter((i) => i.group_id === before.group_id);
+        const allDone = siblings.every((i) => i.id === id || i.status === "Done");
+        pulse(id, "sb-done", 900);
+        if (allDone && siblings.length > 1) {
+          fire(window.innerWidth / 2, window.innerHeight * 0.35, 3);
+          setBanner({ text: `${g?.name || "Group"} — complete`, color: g?.color || T.accent });
+          setTimeout(() => setBanner(null), 3300);
+          pulse(`g${before.group_id}`, "full", 2200);
+        } else {
+          fire(x, y, 1);
+          setToast(DONE_LINES[Math.floor(Math.random() * DONE_LINES.length)]);
+        }
+      } else if (fwd) {
+        pulse(id, "sb-pop", 600);
+      } else if (patch.status === "Stuck") {
+        pulse(id, "sb-pop", 600);
+      }
+    }
+    if (before && patch.group_id && patch.group_id !== before.group_id) pulse(id, "sb-pop", 600);
     setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...patch } : x)));
     const { error } = await supabase.from("board_items").update(patch).eq("id", id);
     if (error) fail(error); else refreshActivity();
@@ -289,7 +389,7 @@ export default function Board() {
       .insert({ board_id: board.id, group_id, name, owner_id: me, status: "Not started", priority: "Medium", position })
       .select().single();
     if (error) return fail(error);
-    setItems((xs) => [...xs, data]); setToast("Item added"); setSelected(data.id);
+    setItems((xs) => [...xs, data]); setToast("Added"); pulse(data.id, "sb-new", 500);
   };
   const duplicate = async (it) => {
     const { id, created_at, updated_at, completed_at, created_by, ...rest } = it;
@@ -343,6 +443,8 @@ export default function Board() {
   }, [items, query, sort, people, facilities]); // eslint-disable-line react-hooks/exhaustive-deps
   const progress = (gid) => { const g = items.filter((i) => i.group_id === gid); return g.length ? Math.round((g.filter((i) => i.status === "Done").length / g.length) * 100) : 0; };
   const sel = items.find((i) => i.id === selected);
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+  const doneWeek = items.filter((i) => i.status === "Done" && i.completed_at && i.completed_at > weekAgo).length;
   const myWork = items.filter((i) => i.owner_id === me && i.status !== "Done").sort((a, b) => (a.due_date || "9").localeCompare(b.due_date || "9"));
   const inboxRows = activity.filter((a) => a.actor_id !== me || a.kind === "comment");
   const unread = inboxRows.filter((a) => !seenAt || a.created_at > seenAt).length;
@@ -366,7 +468,7 @@ export default function Board() {
         {mobile && <a href="/" className="sb-icon-btn" aria-label="Back to dashboard"><Ic d={I.back} size={20} /></a>}
         <div style={{ minWidth: 0, flex: 1 }}>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: -0.4, color: T.accent, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{board?.name || "Spectrum board"}</h1>
-          {!mobile && <p style={{ margin: 0, fontSize: 13, color: T.ink2 }}>{items.filter((i) => i.status !== "Done").length} open · {people.length} people</p>}
+          {!mobile && <p style={{ margin: 0, fontSize: 13, color: T.ink2 }}>{items.filter((i) => i.status !== "Done").length} open · <span key={doneWeek} className="sb-tick" style={{ fontWeight: 700, color: BRAND.green }}>{doneWeek} done this week</span></p>}
         </div>
         {!mobile && <div style={{ display: "flex" }}>{people.map((p, i) => <span key={p.user_id} style={{ marginLeft: i ? -8 : 0, borderRadius: "50%", boxShadow: "0 0 0 2px #fff" }}><Avatar person={p} size={28} /></span>)}</div>}
         <button className="sb-icon-btn" style={{ position: "relative" }} onClick={() => { setTab("inbox"); setView("inbox"); }} aria-label="Inbox">
@@ -413,9 +515,9 @@ export default function Board() {
         {!mobile && (
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: T.ink2, fontVariantNumeric: "tabular-nums" }}>
             <div style={{ width: 96, height: 4, borderRadius: 999, background: T.line, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${pct}%`, background: g.color, borderRadius: 999, transition: "width 200ms" }} />
+              <div className={`sb-bar ${pct === 100 && n > 0 ? "full" : ""} ${flash[`g${g.id}`] || ""}`} style={{ height: "100%", width: `${pct}%`, background: g.color, borderRadius: 999 }} />
             </div>
-            {pct}% done
+            <span key={pct} className="sb-tick" style={{ minWidth: 60, textAlign: "right" }}>{pct === 100 && n > 0 ? "Complete" : `${pct}% done`}</span>
           </div>
         )}
       </div>
@@ -430,7 +532,7 @@ export default function Board() {
     <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 32 }}>
       {groups.map((g) => (
         <section key={g.id} onDragOver={(e) => e.preventDefault()}
-          onDrop={() => { if (drag) { update(drag, { group_id: g.id }); setDrag(null); setToast(`Moved to ${g.name}`); } }}>
+          onDrop={(e) => { lastPointer.current = { x: e.clientX, y: e.clientY }; if (drag) { update(drag, { group_id: g.id }); setDrag(null); setToast(`Moved to ${g.name}`); } }}>
           <GroupHead g={g} />
           {!g.collapsed && (
             <div style={{ overflowX: "auto" }}>
@@ -442,9 +544,12 @@ export default function Board() {
                 <div />
               </div>
               {visible.filter((i) => i.group_id === g.id).map((it) => (
-                <div key={it.id} className="sb-row" draggable onDragStart={() => setDrag(it.id)}
+                <div key={it.id} className={`sb-row ${flash[it.id] || ""}`} draggable onDragStart={() => setDrag(it.id)}
                   style={{ gridTemplateColumns: gridCols, background: selected === it.id ? T.accentSoft : undefined }}>
-                  <div style={{ display: "flex", justifyContent: "center" }}><span style={{ height: 20, width: 3, borderRadius: 999, background: g.color, opacity: it.status === "Done" ? 0.35 : 1 }} /></div>
+                  <div style={{ display: "flex", justifyContent: "center" }}>
+                    {it.status === "Done" ? <span className="sb-check" style={{ color: BRAND.green, display: "inline-flex" }}><Ic d={I.check} size={16} sw={2.6} /></span>
+                      : <span style={{ height: 20, width: 3, borderRadius: 999, background: g.color }} />}
+                  </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 4, paddingRight: 8, fontWeight: 600, minWidth: 0, textDecoration: it.status === "Done" ? "line-through" : "none", color: it.status === "Done" ? T.ink3 : T.ink }}>
                     <EditableText value={it.name} onChange={(v) => update(it.id, { name: v })} />
                     {it.notes && <span title="Has notes" style={{ width: 6, height: 6, borderRadius: "50%", background: T.ink3, flexShrink: 0 }} />}
@@ -486,9 +591,10 @@ export default function Board() {
   const KanbanView = (
     <div style={{ display: "flex", gap: 16, overflowX: "auto", padding: "24px 32px" }}>
       {Object.keys(STATUS).map((s) => (
-        <div key={s} style={{ width: 288, flexShrink: 0, borderRadius: 12, background: T.mist, padding: "0 8px 8px", borderTop: `4px solid ${STATUS[s].dot}` }}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={() => { if (drag) { update(drag, { status: s }); setDrag(null); setToast(`Marked ${s}`); } }}>
+        <div key={s} className={`sb-col ${over === s ? "over" : ""}`} style={{ "--col": STATUS[s].dot, width: 288, flexShrink: 0, borderRadius: 12, background: T.mist, padding: "0 8px 8px", borderTop: `4px solid ${STATUS[s].dot}`, transition: "background 120ms" }}
+          onDragOver={(e) => { e.preventDefault(); if (over !== s) setOver(s); }}
+          onDragLeave={() => setOver(null)}
+          onDrop={(e) => { setOver(null); lastPointer.current = { x: e.clientX, y: e.clientY }; if (drag) { update(drag, { status: s }); setDrag(null); } }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 6px", marginBottom: 8 }}>
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: STATUS[s].dot }} />
             <span style={{ fontSize: 13, fontWeight: 600 }}>{s}</span>
@@ -498,7 +604,7 @@ export default function Board() {
             {visible.filter((i) => i.status === s).map((it) => {
               const g = groupOf(it);
               return (
-                <div key={it.id} className="sb-card" draggable onDragStart={() => setDrag(it.id)} onClick={() => setSelected(it.id)} style={{ borderLeft: `4px solid ${g.color}` }}>
+                <div key={it.id} className={`sb-card ${flash[it.id] || ""}`} draggable onDragStart={() => setDrag(it.id)} onClick={() => setSelected(it.id)} style={{ borderLeft: `4px solid ${g.color}` }}>
                   <p style={{ margin: 0, fontSize: 13, fontWeight: 500, lineHeight: 1.35 }}>{it.name}</p>
                   <p style={{ margin: "4px 0 0", fontSize: 12, color: T.ink3 }}>{g.name}</p>
                   <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: T.ink2 }}>
@@ -517,7 +623,7 @@ export default function Board() {
 
   /* ----- cards (mobile + my work) ----- */
   const Card = ({ it, sub }) => (
-    <button className="sb-mcard" onClick={() => setSelected(it.id)}>
+    <button className={`sb-mcard ${flash[it.id] || ""}`} onClick={() => setSelected(it.id)}>
       <div style={{ width: 4, flexShrink: 0, background: groupOf(it).color }} />
       <div style={{ minWidth: 0, flex: 1, padding: 12 }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
@@ -625,7 +731,7 @@ export default function Board() {
           <Comments itemId={sel.id} activity={activity} me={me} personOf={personOf} onPosted={refreshActivity} />
           <div style={{ display: "flex", gap: 8, marginTop: "auto" }}>
             {sel.status !== "Done" && (
-              <button onClick={() => { update(sel.id, { status: "Done" }); setToast("Marked Done"); }}
+              <button onClick={() => update(sel.id, { status: "Done" })}
                 style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 8, padding: 10, fontSize: 13, fontWeight: 600, color: "#fff", background: BRAND.green }}>
                 <Ic d={I.check} size={16} /> Mark done
               </button>
@@ -681,6 +787,16 @@ export default function Board() {
         {body}
         {mobile && MobileNav}
         {Detail}
+        {canvas}
+        {banner && (
+          <div className="sb-banner" style={{ position: "fixed", left: "50%", top: mobile ? 96 : 120, zIndex: 55, display: "flex", alignItems: "center", gap: 12, padding: "14px 22px", borderRadius: 16, background: "#fff", boxShadow: "0 18px 48px rgba(17,17,17,.22)", borderLeft: `6px solid ${banner.color}` }}>
+            <SpectrumRing size={30} />
+            <div>
+              <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: T.ink }}>{banner.text}</p>
+              <p style={{ margin: 0, fontSize: 12.5, color: T.ink2 }}>Every item in this group is done.</p>
+            </div>
+          </div>
+        )}
         {toast && <div className="sb-fade" style={{ position: "fixed", left: "50%", transform: "translateX(-50%)", zIndex: 50, borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500, color: "#fff", background: T.accent, bottom: mobile ? 76 : 24 }}>{toast}</div>}
       </div>
     </div>
