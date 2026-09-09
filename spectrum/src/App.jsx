@@ -11,6 +11,7 @@ import MedicalDirector from "./routes/MedicalDirector.jsx";
 import QapiAdmin from "./routes/QapiAdmin.jsx";
 import QapiExceptions from "./routes/QapiExceptions.jsx";
 import Facilities from "./routes/Facilities.jsx";
+   import Board from "./routes/Board.jsx";
 function Protected({ children, adminOnly = false, staffOnly = false }) {
   const { session, profile, loading, isAdmin, isApproved } = useAuth();
   const isStaff = ["admin", "manager"].includes(profile?.role);
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="/request-access" element={<RequestAccess />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/admin" element={<Protected adminOnly><Admin /></Protected>} />
+           <Route path="/admin/board" element={<Protected staffOnly><Board /></Protected>} />
         <Route path="/admin/md-time" element={<Protected staffOnly><MedicalDirector /></Protected>} />
         <Route path="/admin/qapi" element={<Protected adminOnly><QapiAdmin /></Protected>} />
         <Route path="/admin/qapi-exceptions" element={<Protected adminOnly><QapiExceptions /></Protected>} />
